@@ -28,7 +28,7 @@ Rightly detects RTL characters anywhere in a line, aligns mixed-language content
 Open PowerShell and run:
 
 ```powershell
-irm https://raw.githubusercontent.com/NoamHermos/rightly-rtl/main/install-online.ps1 | iex
+irm https://raw.githubusercontent.com/NoamHermos/rightly/main/installer/install-online.ps1 | iex
 ```
 
 Choose one target from the interactive menu:
@@ -39,7 +39,7 @@ Choose one target from the interactive menu:
 
 Rightly closes and reopens only the selected application. The installer also creates one desktop shortcut named **Repair RTL**, using the Rightly icon.
 
-For a reviewable local installation, download the repository, inspect the scripts, and run `install.bat` instead of executing the online command directly.
+For a reviewable local installation, download the repository, inspect the scripts, and run `installer/install.bat` instead of executing the online command directly.
 
 ## Usage and updates
 
@@ -76,15 +76,12 @@ Rightly downloads a pinned revision of [`shraga100/claude-desktop-rtl-patch`](ht
 
 | Path | Responsibility |
 | --- | --- |
-| `install.ps1` | Short entry point for installation and repair |
-| `scripts/Rightly.Install.ps1` | Interactive menu, elevation, repair bundle, and shortcut creation |
-| `patch.ps1` | GPT integration installation, cleanup, and launch |
-| `launch-gpt.ps1` | Official GPT launch and injection lifecycle |
-| `gpt-rtl-cdp.js` | Bounded local DevTools connection |
-| `codex-rtl-payload.js` | Standalone GPT direction engine |
-| `claude/patch.ps1` | Verified Claude patch, backup, and restoration |
-| `claude/claude-rtl-payload.js` | Standalone Claude direction engine |
-| `run-repair.ps1` | Repair-shortcut wrapper with readable error logging |
+| `installer/` | Online and local entry points, repair wrapper, and shared installation helpers |
+| `src/gpt/` | GPT integration, launcher, local injector, and direction payload |
+| `src/claude/` | Verified Claude patcher and direction payload |
+| `assets/` | Rightly branding used by the repair shortcut |
+| `docs/` | Third-party notices and supporting documentation |
+| `.github/` | GitHub Actions and the security policy |
 | `tests/` | Behavior, structure, and integration verification |
 
 The payloads are intentionally standalone files: each is injected into a renderer as one unit without a bundler or runtime dependency. Installation code is separated by responsibility so each target can be repaired or removed independently.
@@ -95,14 +92,14 @@ The payloads are intentionally standalone files: each is injected into a rendere
 - GPT's DevTools endpoint listens only on the local loopback interface and the injector disconnects after startup.
 - The external Claude engine is pinned to an exact commit and verified with SHA-256 before execution.
 - No automatic patcher, scheduled task, watcher, or persistent Node process is installed.
-- Read the [security policy](SECURITY.md) before reporting a vulnerability.
+- Read the [security policy](.github/SECURITY.md) before reporting a vulnerability.
 
 ## Uninstallation
 
 Open PowerShell and run:
 
 ```powershell
-irm https://raw.githubusercontent.com/NoamHermos/rightly-rtl/main/uninstall-online.ps1 | iex
+irm https://raw.githubusercontent.com/NoamHermos/rightly/main/installer/uninstall-online.ps1 | iex
 ```
 
 Choose GPT, Claude, or both. GPT removal deletes only Rightly's local runtime. Claude removal restores the official backups. Selecting both also removes the repair bundle and desktop shortcut.
@@ -122,8 +119,9 @@ Run the complete local verification suite from PowerShell:
 node tests/direction.test.js
 node tests/claude-direction.test.js
 ./tests/verify-static.ps1
+./tests/verify-package.ps1
 ./tests/verify-codex.ps1 -SkipInstalledBuild
 ./tests/verify-claude.ps1 -SkipInstalledBuild
 ```
 
-Rightly is an independent project and is not affiliated with OpenAI or Anthropic. Product names belong to their respective owners. The project is distributed under the [MIT License](LICENSE); third-party licenses and attribution are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Rightly is an independent project and is not affiliated with OpenAI or Anthropic. Product names belong to their respective owners. The project is distributed under the [MIT License](LICENSE); third-party licenses and attribution are listed in [THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).

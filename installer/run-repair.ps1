@@ -7,8 +7,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$installer = Join-Path $root "install.ps1"
+$installerDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$root = Split-Path -Parent $installerDir
+$installer = Join-Path $installerDir "install.ps1"
 $logDir = Join-Path $root "logs"
 $logName = if ($Target -eq "Prompt") { "repair-interactive.log" } else { "repair-$($Target.ToLowerInvariant()).log" }
 $logPath = Join-Path $logDir $logName

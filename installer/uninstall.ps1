@@ -10,13 +10,14 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$modulePath = Join-Path $PSScriptRoot "scripts\Rightly.Install.ps1"
+$projectRoot = Split-Path -Parent $PSScriptRoot
+$modulePath = Join-Path $PSScriptRoot "lib\Rightly.Install.ps1"
 if (-not (Test-Path -LiteralPath $modulePath)) { throw "Installer module is missing: $modulePath" }
 . $modulePath
-Initialize-RightlyInstaller -Root $PSScriptRoot
+Initialize-RightlyInstaller -Root $projectRoot
 
-$gptPatcher = Join-Path $PSScriptRoot "patch.ps1"
-$claudePatcher = Join-Path $PSScriptRoot "claude\patch.ps1"
+$gptPatcher = Join-Path $projectRoot "src\gpt\patch.ps1"
+$claudePatcher = Join-Path $projectRoot "src\claude\patch.ps1"
 if ($Target -eq "Prompt") { $Target = Select-RightlyTarget -Operation "uninstall" }
 
 if ($Target -in @("GptWork", "Both")) {
@@ -28,7 +29,7 @@ if ($Target -in @("ClaudeCode", "Both")) {
 
 if ($Target -eq "Both") {
     Remove-RightlyRepairShortcut
-    $runningFromRepairBundle = [System.IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\').Equals(
+    $runningFromRepairBundle = [System.IO.Path]::GetFullPath($projectRoot).TrimEnd('\').Equals(
         [System.IO.Path]::GetFullPath($Script:RightlyRepairDir).TrimEnd('\'),
         [System.StringComparison]::OrdinalIgnoreCase
     )

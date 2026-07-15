@@ -9,7 +9,7 @@ provide immutable source snapshots for users who prefer a pinned installation.
 ## Reporting a vulnerability
 
 Please report security issues privately through a
-[GitHub Security Advisory](https://github.com/NoamHermos/rightly-rtl/security/advisories/new).
+[GitHub Security Advisory](https://github.com/NoamHermos/rightly/security/advisories/new).
 Do not open a public issue for a vulnerability that could put users at risk.
 
 Include the affected Rightly commit or release, Windows version, target app and
@@ -32,7 +32,7 @@ users should review the installer before running it.
 - **Background activity:** Rightly does not install a scheduled task, watcher,
   service, or persistent Node process. Installers remove known legacy tasks.
 - **Online installer:** the one-line command downloads this repository from the
-  branch or tag named in `install-online.ps1`. Running code from `main` always
+  branch or tag named in `installer/install-online.ps1`. Running code from `main` always
   carries normal branch-compromise risk; a versioned release should be preferred
   once available.
 

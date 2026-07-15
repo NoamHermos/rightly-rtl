@@ -10,13 +10,13 @@ function Assert-True {
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $paths = @{
-    Patcher = Join-Path $repoRoot "patch.ps1"
-    Payload = Join-Path $repoRoot "codex-rtl-payload.js"
-    Injector = Join-Path $repoRoot "gpt-rtl-cdp.js"
-    Launcher = Join-Path $repoRoot "launch-gpt.ps1"
-    Installer = Join-Path $repoRoot "install.ps1"
-    InstallerModule = Join-Path $repoRoot "scripts\Rightly.Install.ps1"
-    Repair = Join-Path $repoRoot "run-repair.ps1"
+    Patcher = Join-Path $repoRoot "src\gpt\patch.ps1"
+    Payload = Join-Path $repoRoot "src\gpt\codex-rtl-payload.js"
+    Injector = Join-Path $repoRoot "src\gpt\gpt-rtl-cdp.js"
+    Launcher = Join-Path $repoRoot "src\gpt\launch-gpt.ps1"
+    Installer = Join-Path $repoRoot "installer\install.ps1"
+    InstallerModule = Join-Path $repoRoot "installer\lib\Rightly.Install.ps1"
+    Repair = Join-Path $repoRoot "installer\run-repair.ps1"
 }
 
 foreach ($path in $paths.Values) {
@@ -81,9 +81,9 @@ Assert-True ($payload.Contains('el.style.textAlign = "left"')) "Sidebar titles a
 # The standalone repository contains only the official-app runtime.
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $repoRoot "OLD"))) "The copied-app archive must not ship in the standalone repository"
 Assert-True (-not $installerModule.Contains('OLD\')) "The main installer must never deploy or run OLD"
-Assert-True ($installer.Contains('scripts\Rightly.Install.ps1')) "Installer does not load the shared module"
-Assert-True ($installerModule.Contains('"gpt-rtl-cdp.js"')) "Repair bundle omits the active injector"
-Assert-True ($installerModule.Contains('"launch-gpt.ps1"')) "Repair bundle omits the active launcher"
+Assert-True ($installer.Contains('lib\Rightly.Install.ps1')) "Installer does not load the shared module"
+Assert-True ($installerModule.Contains('"src\gpt\gpt-rtl-cdp.js"')) "Repair bundle omits the active injector"
+Assert-True ($installerModule.Contains('"src\gpt\launch-gpt.ps1"')) "Repair bundle omits the active launcher"
 Assert-True ($installerModule.Contains('"assets\rightly.ico"')) "Repair bundle omits the Rightly icon"
 Assert-True ($installerModule.Contains('"Repair RTL.lnk"')) "The interactive repair shortcut is missing"
 Assert-True ($installerModule.Contains('-Target Prompt')) "The repair shortcut does not prompt for GPT, Claude, or both"

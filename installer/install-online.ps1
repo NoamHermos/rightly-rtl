@@ -2,12 +2,12 @@
 Rightly - unified online RTL installer for GPT and Claude.
 
 Run with:
-  irm https://raw.githubusercontent.com/NoamHermos/rightly-rtl/main/install-online.ps1 | iex
+  irm https://raw.githubusercontent.com/NoamHermos/rightly/main/installer/install-online.ps1 | iex
 #>
 
 [CmdletBinding()]
 param(
-    [string] $Repo = "NoamHermos/rightly-rtl",
+    [string] $Repo = "NoamHermos/rightly",
     [string] $Branch = "main",
     [ValidateSet("Prompt", "GptWork", "ClaudeCode", "Both")]
     [string] $Target = "Prompt"
@@ -41,7 +41,7 @@ try {
 
     $sourceDir = Get-ChildItem -LiteralPath $extractDir -Directory | Select-Object -First 1
     if (-not $sourceDir) { throw "Could not locate the downloaded source." }
-    $installer = Join-Path $sourceDir.FullName "install.ps1"
+    $installer = Join-Path $sourceDir.FullName "installer\install.ps1"
     if (-not (Test-Path -LiteralPath $installer)) { throw "install.ps1 was not found in the downloaded source." }
 
     Write-Step "Opening the installation menu"

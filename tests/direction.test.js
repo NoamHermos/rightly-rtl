@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const payloadPath = path.join(__dirname, "..", "codex-rtl-payload.js");
+const payloadPath = path.join(__dirname, "..", "src", "gpt", "codex-rtl-payload.js");
 let payload = fs.readFileSync(payloadPath, "utf8");
 
 const hookPoint = "    function detectElDir(el) {";

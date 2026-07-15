@@ -3,12 +3,12 @@
 Downloads Rightly and opens the unified Windows uninstaller.
 
 .EXAMPLE
-irm https://raw.githubusercontent.com/NoamHermos/rightly-rtl/main/uninstall-online.ps1 | iex
+irm https://raw.githubusercontent.com/NoamHermos/rightly/main/installer/uninstall-online.ps1 | iex
 #>
 
 [CmdletBinding()]
 param(
-    [string] $Repo = "NoamHermos/rightly-rtl",
+    [string] $Repo = "NoamHermos/rightly",
     [string] $Branch = "main",
     [ValidateSet("Prompt", "GptWork", "ClaudeCode", "Both")]
     [string] $Target = "Prompt"
@@ -30,7 +30,7 @@ try {
 
     $sourceDir = Get-ChildItem -LiteralPath $extractDir -Directory | Select-Object -First 1
     if (-not $sourceDir) { throw "Could not locate the downloaded source." }
-    $uninstaller = Join-Path $sourceDir.FullName "uninstall.ps1"
+    $uninstaller = Join-Path $sourceDir.FullName "installer\uninstall.ps1"
     if (-not (Test-Path -LiteralPath $uninstaller)) { throw "uninstall.ps1 was not found in the downloaded source." }
 
     $powershell = (Get-Process -Id $PID -ErrorAction SilentlyContinue).Path

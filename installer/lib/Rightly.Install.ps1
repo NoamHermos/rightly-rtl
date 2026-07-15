@@ -4,8 +4,8 @@ Shared installation helpers for Rightly's Windows entry points.
 
 .DESCRIPTION
 This file owns the interactive target menu, elevation hand-off, repair bundle,
-and desktop shortcut. App-specific patching remains in patch.ps1 and
-claude\patch.ps1 so each integration can be tested independently.
+and desktop shortcut. App-specific patching remains in src\gpt\patch.ps1 and
+src\claude\patch.ps1 so each integration can be tested independently.
 #>
 
 Set-StrictMode -Version 2.0
@@ -89,7 +89,7 @@ function Invoke-RightlyElevatedInstallerIfNeeded {
     if (Test-RightlyAdministrator) { return $false }
     if ($Elevated) { throw "Administrator rights were requested but were not granted." }
 
-    $installer = Join-Path $Script:RightlyRoot "install.ps1"
+    $installer = Join-Path $Script:RightlyRoot "installer\install.ps1"
     if (-not (Test-Path -LiteralPath $installer)) {
         throw "Cannot elevate because the installer is missing: $installer"
     }
@@ -148,17 +148,17 @@ function Copy-RightlyRepairFile {
 function Install-RightlyRepairBundle {
     Write-RightlyStep "Installing the interactive RTL repair command"
     foreach ($relative in @(
-        "install.ps1",
-        "patch.ps1",
-        "codex-rtl-payload.js",
-        "gpt-rtl-cdp.js",
-        "launch-gpt.ps1",
-        "run-repair.ps1",
-        "uninstall.ps1",
-        "scripts\Rightly.Install.ps1",
+        "installer\install.ps1",
+        "installer\run-repair.ps1",
+        "installer\uninstall.ps1",
+        "installer\lib\Rightly.Install.ps1",
         "assets\rightly.ico",
-        "claude\patch.ps1",
-        "claude\claude-rtl-payload.js"
+        "src\gpt\patch.ps1",
+        "src\gpt\codex-rtl-payload.js",
+        "src\gpt\gpt-rtl-cdp.js",
+        "src\gpt\launch-gpt.ps1",
+        "src\claude\patch.ps1",
+        "src\claude\claude-rtl-payload.js"
     )) {
         Copy-RightlyRepairFile $relative
     }
@@ -207,7 +207,7 @@ function New-RightlyRepairShortcut {
 
     $desktop = [Environment]::GetFolderPath("Desktop")
     $shortcutPath = Join-Path $desktop "Repair RTL.lnk"
-    $repairRunner = Join-Path $Script:RightlyRepairDir "run-repair.ps1"
+    $repairRunner = Join-Path $Script:RightlyRepairDir "installer\run-repair.ps1"
     $icon = Join-Path $Script:RightlyRepairDir "assets\rightly.ico"
 
     foreach ($path in @($repairRunner, $icon)) {

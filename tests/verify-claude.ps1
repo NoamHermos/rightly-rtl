@@ -9,12 +9,12 @@ function Assert-True {
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$moduleRoot = Join-Path $repoRoot "claude"
+$moduleRoot = Join-Path $repoRoot "src\claude"
 $patcherPath = Join-Path $moduleRoot "patch.ps1"
 $payloadPath = Join-Path $moduleRoot "claude-rtl-payload.js"
 $readmePath = Join-Path $repoRoot "README.md"
-$installOnlinePath = Join-Path $repoRoot "install-online.ps1"
-$uninstallOnlinePath = Join-Path $repoRoot "uninstall-online.ps1"
+$installOnlinePath = Join-Path $repoRoot "installer\install-online.ps1"
+$uninstallOnlinePath = Join-Path $repoRoot "installer\uninstall-online.ps1"
 
 foreach ($path in @($patcherPath, $payloadPath, $readmePath, $installOnlinePath, $uninstallOnlinePath)) {
     Assert-True (Test-Path -LiteralPath $path) "Missing Claude module file: $path"
@@ -65,7 +65,7 @@ Assert-True ($payload.Contains('table[data-rt-ai-claude-dir=')) "Claude RTL tabl
 Assert-True ($payload.Contains('margin-left:auto!important;margin-right:auto!important')) "Claude RTL tables should be centered"
 Assert-True ($payload.Contains('code{direction:ltr!important')) "Claude code must remain LTR"
 
-Assert-True ($installOnline.Contains('NoamHermos/rightly-rtl')) "Claude online installer must use the standalone Rightly repository"
+Assert-True ($installOnline.Contains('NoamHermos/rightly')) "Claude online installer must use the Rightly repository"
 Assert-True ($readme.Contains('applies it directly to Claude')) "README must explain the in-place Claude installation"
 Assert-True ($readme.Contains('does not create a copied Claude application')) "README must rule out a copied Claude installation"
 Assert-True ($readme.Contains('Repair RTL')) "Claude README must describe the interactive repair shortcut"

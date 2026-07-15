@@ -13,25 +13,26 @@ function Read-RepoFile {
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $required = @(
     "README.md",
-    "SECURITY.md",
-    "THIRD_PARTY_NOTICES.md",
     "LICENSE",
-    "install.ps1",
-    "install-online.ps1",
-    "install.bat",
-    "uninstall.ps1",
-    "uninstall-online.ps1",
-    "uninstall.bat",
-    "run-repair.ps1",
-    "scripts\Rightly.Install.ps1",
+    ".github\SECURITY.md",
+    "docs\THIRD_PARTY_NOTICES.md",
+    "installer\install.ps1",
+    "installer\install-online.ps1",
+    "installer\install.bat",
+    "installer\uninstall.ps1",
+    "installer\uninstall-online.ps1",
+    "installer\uninstall.bat",
+    "installer\run-repair.ps1",
+    "installer\lib\Rightly.Install.ps1",
     "assets\rightly-logo.png",
     "assets\rightly.ico",
-    "patch.ps1",
-    "launch-gpt.ps1",
-    "gpt-rtl-cdp.js",
-    "codex-rtl-payload.js",
-    "claude\patch.ps1",
-    "claude\claude-rtl-payload.js"
+    "src\gpt\patch.ps1",
+    "src\gpt\launch-gpt.ps1",
+    "src\gpt\gpt-rtl-cdp.js",
+    "src\gpt\codex-rtl-payload.js",
+    "src\claude\patch.ps1",
+    "src\claude\claude-rtl-payload.js",
+    "tests\verify-package.ps1"
 )
 foreach ($relative in $required) {
     Assert-True (Test-Path -LiteralPath (Join-Path $repoRoot $relative)) "Required file is missing: $relative"
@@ -39,6 +40,17 @@ foreach ($relative in $required) {
 
 $obsolete = @(
     "fix-autoupdate-online.ps1",
+    "install.ps1",
+    "install-online.ps1",
+    "install.bat",
+    "uninstall.ps1",
+    "uninstall-online.ps1",
+    "uninstall.bat",
+    "run-repair.ps1",
+    "patch.ps1",
+    "launch-gpt.ps1",
+    "gpt-rtl-cdp.js",
+    "codex-rtl-payload.js",
     "install-online.sh",
     "patch.sh",
     "uninstall-online.sh",
@@ -55,15 +67,16 @@ foreach ($relative in $obsolete) {
 }
 
 $powerShellFiles = @(
-    "install.ps1",
-    "install-online.ps1",
-    "uninstall.ps1",
-    "uninstall-online.ps1",
-    "run-repair.ps1",
-    "scripts\Rightly.Install.ps1",
-    "patch.ps1",
-    "launch-gpt.ps1",
-    "claude\patch.ps1"
+    "installer\install.ps1",
+    "installer\install-online.ps1",
+    "installer\uninstall.ps1",
+    "installer\uninstall-online.ps1",
+    "installer\run-repair.ps1",
+    "installer\lib\Rightly.Install.ps1",
+    "tests\verify-package.ps1",
+    "src\gpt\patch.ps1",
+    "src\gpt\launch-gpt.ps1",
+    "src\claude\patch.ps1"
 )
 foreach ($relative in $powerShellFiles) {
     $tokens = $null
@@ -74,17 +87,17 @@ foreach ($relative in $powerShellFiles) {
     Assert-True (-not $errors) "$relative has PowerShell syntax errors: $errors"
 }
 
-$installer = Read-RepoFile "install.ps1"
-$installerModule = Read-RepoFile "scripts\Rightly.Install.ps1"
-$uninstaller = Read-RepoFile "uninstall.ps1"
-$patcher = Read-RepoFile "patch.ps1"
-$launcher = Read-RepoFile "launch-gpt.ps1"
-$injector = Read-RepoFile "gpt-rtl-cdp.js"
-$payload = Read-RepoFile "codex-rtl-payload.js"
-$claudePatcher = Read-RepoFile "claude\patch.ps1"
-$repair = Read-RepoFile "run-repair.ps1"
+$installer = Read-RepoFile "installer\install.ps1"
+$installerModule = Read-RepoFile "installer\lib\Rightly.Install.ps1"
+$uninstaller = Read-RepoFile "installer\uninstall.ps1"
+$patcher = Read-RepoFile "src\gpt\patch.ps1"
+$launcher = Read-RepoFile "src\gpt\launch-gpt.ps1"
+$injector = Read-RepoFile "src\gpt\gpt-rtl-cdp.js"
+$payload = Read-RepoFile "src\gpt\codex-rtl-payload.js"
+$claudePatcher = Read-RepoFile "src\claude\patch.ps1"
+$repair = Read-RepoFile "installer\run-repair.ps1"
 $readme = Read-RepoFile "README.md"
-$thirdParty = Read-RepoFile "THIRD_PARTY_NOTICES.md"
+$thirdParty = Read-RepoFile "docs\THIRD_PARTY_NOTICES.md"
 
 # GPT uses the official app and a bounded, loopback-only startup injector.
 Assert-True ($patcher.Contains('architecture = "loopback-cdp-runtime"')) "Active GPT runtime architecture is missing"
@@ -106,7 +119,7 @@ Assert-True ($payload.Contains('PROCESS_BATCH_SIZE = 3')) "Long-chat processing 
 Assert-True ($payload.Contains('normalizeSidebarTitleText')) "Mixed Hebrew sidebar title handling is missing"
 
 # One shared module owns the interactive menu, repair bundle, and branded icon.
-Assert-True ($installer.Contains('scripts\Rightly.Install.ps1')) "Installer does not load the shared module"
+Assert-True ($installer.Contains('lib\Rightly.Install.ps1')) "Installer does not load the shared module"
 Assert-True ($installerModule.Contains('ValidateSet("install", "repair", "uninstall")')) "Interactive operations are incomplete"
 Assert-True ($installerModule.Contains('assets\rightly.ico')) "Repair bundle does not include the Rightly icon"
 Assert-True ($installerModule.Contains('$shortcut.IconLocation = "$icon,0"')) "Repair shortcut does not use the Rightly icon"
@@ -132,11 +145,15 @@ Assert-True ($ico.Length -gt 10000 -and $ico[0] -eq 0 -and $ico[1] -eq 0 -and $i
 
 # The standalone repository contains only the current implementation.
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $repoRoot "OLD"))) "Legacy copied-app archive must not ship in the standalone repository"
-Assert-True (-not (Test-Path -LiteralPath (Join-Path $repoRoot "docs"))) "Borrowed documentation images must not ship in the standalone repository"
+$docImages = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "docs") -File -Recurse | Where-Object Extension -Match '^\.(png|jpe?g|gif|webp)$')
+Assert-True ($docImages.Count -eq 0) "Borrowed documentation images must not ship in the standalone repository"
 Assert-True (-not $installerModule.Contains('OLD\')) "The active repair bundle references OLD"
+$allowedRootFiles = @(".gitattributes", ".gitignore", "LICENSE", "README.md")
+$unexpectedRootFiles = @(Get-ChildItem -LiteralPath $repoRoot -File -Force | Where-Object Name -NotIn $allowedRootFiles)
+Assert-True ($unexpectedRootFiles.Count -eq 0) "Unexpected loose files remain at the repository root: $($unexpectedRootFiles.Name -join ', ')"
 
 # Public documentation matches the current Windows architecture.
-Assert-True ($readme.Contains('NoamHermos/rightly-rtl/main/install-online.ps1')) "README installer URL is wrong"
+Assert-True ($readme.Contains('NoamHermos/rightly/main/installer/install-online.ps1')) "README installer URL is wrong"
 Assert-True ($readme.Contains('## How it works')) "README architecture summary is missing"
 Assert-True ($readme.Contains('No scheduled task')) "README does not state that background repair is disabled"
 Assert-True ($readme.Contains('Repair RTL')) "README does not explain the repair shortcut"
