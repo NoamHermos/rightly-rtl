@@ -153,6 +153,12 @@ function Start-Injector {
     $startInfo.Arguments = $arguments
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
+    # Suppress Node's non-fatal deprecation and warning output (for example the
+    # url.parse DEP0169 notice) so it never surfaces as a spurious error.
+    $startInfo.EnvironmentVariables["NODE_NO_WARNINGS"] = "1"
+    $existingNodeOptions = [string]$startInfo.EnvironmentVariables["NODE_OPTIONS"]
+    $startInfo.EnvironmentVariables["NODE_OPTIONS"] =
+        (@($existingNodeOptions, "--no-deprecation") | Where-Object { $_ }) -join " "
     $startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
     $process = [System.Diagnostics.Process]::Start($startInfo)
     if (-not $process) { throw "Could not start the Rightly runtime injector." }

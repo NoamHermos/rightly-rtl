@@ -18,6 +18,13 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Keep Node's non-fatal deprecation and warning output (for example the
+# url.parse DEP0169 notice) off the console so it is never mistaken for a
+# Rightly failure.
+$env:NODE_NO_WARNINGS = "1"
+$env:NODE_OPTIONS = (@($env:NODE_OPTIONS, "--no-deprecation") | Where-Object { $_ }) -join " "
+
 $Script:ModuleRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Script:RuntimeDir = Join-Path $env:LOCALAPPDATA "Programs\Rightly\GPT"
 $Script:RuntimeLauncher = Join-Path $Script:RuntimeDir "launch-gpt.ps1"

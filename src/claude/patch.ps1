@@ -19,6 +19,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Keep Node's non-fatal deprecation and warning output (for example the
+# url.parse DEP0169 notice from the patch engine's tooling) off the console so
+# it is never mistaken for a Rightly failure.
+$env:NODE_NO_WARNINGS = "1"
+$env:NODE_OPTIONS = (@($env:NODE_OPTIONS, "--no-deprecation") | Where-Object { $_ }) -join " "
+
 $Script:ModuleRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Script:PayloadPath = Join-Path $Script:ModuleRoot "claude-rtl-payload.js"
 $Script:ShortcutName = "Claude RTL.lnk"
