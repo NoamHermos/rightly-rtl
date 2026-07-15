@@ -26,6 +26,7 @@ try {
     $repairRoot = Join-Path $sandbox "Programs\Rightly\Repair"
     $expected = @(
         "installer\install.ps1",
+        "installer\install-online.ps1",
         "installer\run-repair.ps1",
         "installer\uninstall.ps1",
         "installer\lib\Rightly.Install.ps1",
@@ -51,6 +52,8 @@ try {
     $installOnline = Get-Content -LiteralPath $installOnlinePath -Raw
     $uninstallOnline = Get-Content -LiteralPath $uninstallOnlinePath -Raw
     Assert-True ($installOnline.Contains('installer\install.ps1')) "Online installer targets the wrong entry point"
+    Assert-True ($installOnline.Contains('[switch] $RepairMode')) "Online installer does not accept repair mode"
+    Assert-True ($installOnline.Contains('$installerArguments += "-RepairMode"')) "Online installer does not forward repair mode"
     Assert-True ($uninstallOnline.Contains('installer\uninstall.ps1')) "Online uninstaller targets the wrong entry point"
 } finally {
     $env:LOCALAPPDATA = $originalLocalAppData

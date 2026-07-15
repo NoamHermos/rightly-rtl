@@ -88,6 +88,7 @@ foreach ($relative in $powerShellFiles) {
 }
 
 $installer = Read-RepoFile "installer\install.ps1"
+$onlineInstaller = Read-RepoFile "installer\install-online.ps1"
 $installerModule = Read-RepoFile "installer\lib\Rightly.Install.ps1"
 $uninstaller = Read-RepoFile "installer\uninstall.ps1"
 $patcher = Read-RepoFile "src\gpt\patch.ps1"
@@ -122,11 +123,14 @@ Assert-True ($payload.Contains('normalizeSidebarTitleText')) "Mixed Hebrew sideb
 Assert-True ($installer.Contains('lib\Rightly.Install.ps1')) "Installer does not load the shared module"
 Assert-True ($installerModule.Contains('ValidateSet("install", "repair", "uninstall")')) "Interactive operations are incomplete"
 Assert-True ($installerModule.Contains('assets\rightly.ico')) "Repair bundle does not include the Rightly icon"
+Assert-True ($installerModule.Contains('installer\install-online.ps1')) "Repair bundle does not include its online bootstrap"
 Assert-True ($installerModule.Contains('$shortcut.IconLocation = "$icon,0"')) "Repair shortcut does not use the Rightly icon"
 Assert-True ($installerModule.Contains('"Repair RTL.lnk"')) "Interactive repair shortcut is missing"
 Assert-True ($installerModule.Contains('-Target Prompt')) "Repair shortcut does not open the target menu"
 Assert-True (-not $installerModule.Contains('@("Codex.lnk"')) "Installer must not delete the official Codex shortcut by name"
-Assert-True ($repair.Contains('& $installer -Target $Target -RepairMode')) "Repair runner does not forward its target"
+Assert-True ($repair.Contains('& $onlineInstaller -Repo "NoamHermos/rightly" -Branch "main" -Target $Target -RepairMode')) "Repair runner does not fetch main or forward its target"
+Assert-True ($onlineInstaller.Contains('[switch] $RepairMode')) "Online installer does not accept repair mode"
+Assert-True ($onlineInstaller.Contains('$installerArguments += "-RepairMode"')) "Online installer does not forward repair mode"
 Assert-True ($repair.Contains('Start-Transcript')) "Repair failures are not logged"
 Assert-True ($uninstaller.Contains('Select-RightlyTarget -Operation "uninstall"')) "Unified uninstall menu is missing"
 
@@ -136,6 +140,10 @@ Assert-True ($claudePatcher.Contains('$Script:UpstreamSha256')) "Pinned Claude S
 Assert-True ($claudePatcher.Contains('Remove-AutomaticPatching')) "Legacy Claude watcher cleanup is missing"
 Assert-True ($claudePatcher.Contains('Remove-LegacyCopy')) "Legacy Claude copy cleanup is missing"
 Assert-True (-not $claudePatcher.Contains('Register-ScheduledTask')) "Claude must not register background repair"
+Assert-True ($claudePatcher.Contains('--no-deprecation')) "Claude deprecation warning suppression is missing"
+Assert-True (-not $claudePatcher.Contains('NODE_NO_WARNINGS')) "Claude patcher must not suppress every Node warning"
+Assert-True (-not $patcher.Contains('NODE_NO_WARNINGS')) "GPT patcher must not suppress Node warnings"
+Assert-True (-not $launcher.Contains('NODE_NO_WARNINGS')) "GPT launcher must not suppress Node warnings"
 
 # Brand assets are valid PNG/ICO files, not placeholders.
 $png = [System.IO.File]::ReadAllBytes((Join-Path $repoRoot "assets\rightly-logo.png"))

@@ -9,16 +9,35 @@ param(
 $ErrorActionPreference = "Stop"
 $installerDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $installerDir
-$installer = Join-Path $installerDir "install.ps1"
+$onlineInstaller = Join-Path $installerDir "install-online.ps1"
 $logDir = Join-Path $root "logs"
 $logName = if ($Target -eq "Prompt") { "repair-interactive.log" } else { "repair-$($Target.ToLowerInvariant()).log" }
 $logPath = Join-Path $logDir $logName
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 
+function Wait-RightlyClose {
+    Write-Host ""
+    Write-Host "Press any key to close . . ." -ForegroundColor DarkGray
+    try {
+        [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    } catch {
+        try { [void](Read-Host) } catch { }
+    }
+}
+
+$succeeded = $false
 try {
     Start-Transcript -LiteralPath $logPath -Force | Out-Null
-    if (-not (Test-Path -LiteralPath $installer)) { throw "Rightly installer is missing: $installer" }
-    & $installer -Target $Target -RepairMode
+    if (-not (Test-Path -LiteralPath $onlineInstaller)) {
+        throw "Rightly online installer is missing: $onlineInstaller"
+    }
+
+    # The local bootstrap always downloads main before it invokes the repair.
+    # A successful desktop-shortcut run therefore uses the current repository
+    # rather than the source snapshot copied during the first installation.
+    Write-Host "Checking for the latest Rightly version..." -ForegroundColor Cyan
+    & $onlineInstaller -Repo "NoamHermos/rightly" -Branch "main" -Target $Target -RepairMode
+    $succeeded = $true
 } catch {
     try { Add-Content -LiteralPath $logPath -Value "$(Get-Date -Format o) FATAL $($_.Exception.Message)" -Encoding UTF8 } catch { }
     try {
@@ -30,7 +49,24 @@ try {
             [System.Windows.Forms.MessageBoxIcon]::Error
         )
     } catch { }
-    exit 1
 } finally {
     try { Stop-Transcript | Out-Null } catch { }
+}
+
+Write-Host ""
+if ($succeeded) {
+    Write-Host "============================================================" -ForegroundColor Green
+    Write-Host "  SUCCESS" -ForegroundColor Green
+    Write-Host "  Rightly RTL repair completed. You can use the app now." -ForegroundColor Green
+    Write-Host "============================================================" -ForegroundColor Green
+    Wait-RightlyClose
+    exit 0
+} else {
+    Write-Host "============================================================" -ForegroundColor Red
+    Write-Host "  FAILED" -ForegroundColor Red
+    Write-Host "  Rightly RTL repair did not complete." -ForegroundColor Red
+    Write-Host "  Log: $logPath" -ForegroundColor Red
+    Write-Host "============================================================" -ForegroundColor Red
+    Wait-RightlyClose
+    exit 1
 }

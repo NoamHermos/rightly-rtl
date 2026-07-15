@@ -149,6 +149,7 @@ function Install-RightlyRepairBundle {
     Write-RightlyStep "Installing the interactive RTL repair command"
     foreach ($relative in @(
         "installer\install.ps1",
+        "installer\install-online.ps1",
         "installer\run-repair.ps1",
         "installer\uninstall.ps1",
         "installer\lib\Rightly.Install.ps1",

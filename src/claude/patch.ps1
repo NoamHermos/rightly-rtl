@@ -19,6 +19,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Hide only Node deprecation notices (for example DEP0169 from Claude's own
+# Electron runtime). Other warnings remain visible so genuine problems are not
+# accidentally masked, and the flag is added at most once.
+$nodeOptions = @($env:NODE_OPTIONS -split '\s+' | Where-Object { $_ })
+if ($nodeOptions -notcontains "--no-deprecation") {
+    $env:NODE_OPTIONS = (@($nodeOptions) + "--no-deprecation") -join " "
+}
+
 $Script:ModuleRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Script:PayloadPath = Join-Path $Script:ModuleRoot "claude-rtl-payload.js"
 $Script:ShortcutName = "Claude RTL.lnk"

@@ -44,10 +44,11 @@ For a reviewable local installation, download the repository, inspect the script
 ## Usage and updates
 
 - The selected app opens with the RTL correction active after installation.
+- **Repair RTL** downloads the current `main` snapshot before showing the target menu, so every successful repair uses the latest project code. An internet connection is required.
 - After an official app update, run **Repair RTL** and select only the app that was updated.
 - GPT injection is applied in memory to the official app. After fully closing GPT or restarting Windows, run **Repair RTL** and select GPT again.
 - Claude is patched in place and remains corrected until an official update replaces its files. Run **Repair RTL** again after that update.
-- Rightly does not keep an automatic repair process running in the background.
+- The local repair bundle refreshes itself during each repair. Rightly does not keep an automatic updater or repair process running in the background.
 
 ## How it works
 

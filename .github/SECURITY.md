@@ -31,10 +31,12 @@ users should review the installer before running it.
   certificate as documented by the upstream project.
 - **Background activity:** Rightly does not install a scheduled task, watcher,
   service, or persistent Node process. Installers remove known legacy tasks.
-- **Online installer:** the one-line command downloads this repository from the
-  branch or tag named in `installer/install-online.ps1`. Running code from `main` always
-  carries normal branch-compromise risk; a versioned release should be preferred
-  once available.
+- **Online installer and repair shortcut:** both download this repository from
+  the branch or tag named in `installer/install-online.ps1`. The desktop repair
+  shortcut deliberately uses `main` so it can repair an updated app with the
+  current project code. Running code from `main` always carries normal
+  branch-compromise risk; a versioned release should be preferred when automatic
+  updates are not required.
 
 ## In scope
 

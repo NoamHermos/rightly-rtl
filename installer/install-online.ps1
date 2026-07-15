@@ -10,7 +10,8 @@ param(
     [string] $Repo = "NoamHermos/rightly",
     [string] $Branch = "main",
     [ValidateSet("Prompt", "GptWork", "ClaudeCode", "Both")]
-    [string] $Target = "Prompt"
+    [string] $Target = "Prompt",
+    [switch] $RepairMode
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,7 +48,14 @@ try {
     Write-Step "Opening the installation menu"
     $psExe = (Get-Process -Id $PID).Path
     if (-not $psExe) { $psExe = "powershell.exe" }
-    & $psExe -NoProfile -ExecutionPolicy Bypass -File $installer -Target $Target
+    $installerArguments = @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $installer,
+        "-Target", $Target
+    )
+    if ($RepairMode) { $installerArguments += "-RepairMode" }
+    & $psExe @installerArguments
     if ($LASTEXITCODE -ne 0) { throw "Installer exited with code $LASTEXITCODE." }
 } finally {
     if (Test-Path -LiteralPath $tempRoot) {
