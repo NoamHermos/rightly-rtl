@@ -1,0 +1,25 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Static and behavior tests
+        shell: pwsh
+        run: |
+          ./tests/verify-static.ps1
+          ./tests/verify-codex.ps1 -SkipInstalledBuild
+          ./tests/verify-claude.ps1 -SkipInstalledBuild
