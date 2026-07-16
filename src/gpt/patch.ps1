@@ -395,6 +395,7 @@ function Grant-AsarWriteAccess {
     $resourcesDir = Split-Path -Parent $AsarPath
     $takeown = Join-Path $env:WINDIR "System32\takeown.exe"
     $icacls = Join-Path $env:WINDIR "System32\icacls.exe"
+    $attrib = Join-Path $env:WINDIR "System32\attrib.exe"
     $userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 
     # Newer WindowsApps packages enforce the parent directory ACL in addition
@@ -411,6 +412,14 @@ function Grant-AsarWriteAccess {
         -Arguments @($AsarPath, "/grant", '*S-1-5-32-544:(F)', "*$userSid`:(F)") `
         -FailureMessage "Could not grant write access to the official GPT ASAR")
 
+    # WindowsApps stages app.asar with the read-only (and sometimes system)
+    # attribute set. Opening a read-only file for write returns an access-denied
+    # error even after ownership and ACLs are corrected, so clear the attributes
+    # explicitly before the replacement. attrib is used as the authoritative
+    # path because a swallowed Set-ItemProperty failure previously left the
+    # read-only bit in place.
+    [void] (Invoke-NativeUtility -FilePath $attrib `
+        -Arguments @("-R", "-S", "-H", $AsarPath) -IgnoreExitCode)
     try {
         Set-ItemProperty -LiteralPath $AsarPath -Name IsReadOnly -Value $false -ErrorAction Stop
     } catch { }
@@ -419,9 +428,16 @@ function Grant-AsarWriteAccess {
 function Assert-AsarCanBeReplaced {
     param([string] $AsarPath)
 
+    # Returns "InPlace" when an exclusive read/write handle is available (the
+    # fast path that overwrites the file directly). Returns "Rename" when the
+    # only obstacle is an access-denied condition with no official process
+    # holding the file - a WindowsApps permission/attribute state that a
+    # same-directory rename still defeats. Throws only when a live GPT/Codex
+    # process keeps re-locking the ASAR past the deadline.
     $deadline = (Get-Date).AddSeconds(10)
     do {
         $stream = $null
+        $lastException = $null
         try {
             $stream = [System.IO.File]::Open(
                 $AsarPath,
@@ -429,21 +445,30 @@ function Assert-AsarCanBeReplaced {
                 [System.IO.FileAccess]::ReadWrite,
                 [System.IO.FileShare]::None
             )
-            return
+            return "InPlace"
         } catch {
-            $lastError = $_.Exception.Message
+            $lastException = $_.Exception
         } finally {
             if ($stream) { $stream.Dispose() }
         }
 
         # If Windows restarted a package process during the hand-off, terminate
         # it again and keep polling until the ASAR handle is actually released.
+        $officialBusy = $false
         try {
             $official = Get-OfficialCodexPackage
             if (@(Get-OfficialCodexProcesses $official.AppDir).Count -gt 0) {
                 Stop-OfficialCodex $official.AppDir
+                $officialBusy = $true
             }
         } catch { }
+
+        # Access denied without any surviving official process is a permission
+        # or read-only-attribute state, not a live lock. The caller can still
+        # replace the ASAR by renaming the original aside, so stop waiting.
+        if (-not $officialBusy -and $lastException -is [System.UnauthorizedAccessException]) {
+            return "Rename"
+        }
         Start-Sleep -Milliseconds 350
     } while ((Get-Date) -lt $deadline)
 
@@ -456,7 +481,40 @@ function Assert-AsarCanBeReplaced {
             $processHint = " Remaining GPT/Codex process ids: $ids."
         }
     } catch { }
+    $lastError = if ($lastException) { $lastException.Message } else { "unknown error" }
     throw "Rightly force-closed GPT/Codex and prepared the WindowsApps permissions, but still could not obtain exclusive write access to GPT's app.asar.$processHint Original error: $lastError"
+}
+
+function Set-AsarByRename {
+    param(
+        [Parameter(Mandatory)][string] $Source,
+        [Parameter(Mandatory)][string] $Destination
+    )
+
+    # A same-directory rename needs delete access on the file and add access on
+    # the folder - both granted by Grant-AsarWriteAccess - and succeeds even when
+    # the original stays read-only, so it replaces the ASAR when an exclusive
+    # in-place open is refused. The original is only removed once the new copy is
+    # in place; any failure restores it.
+    $aside = "$Destination.rightly-previous"
+    if (Test-Path -LiteralPath $aside) {
+        Set-ItemProperty -LiteralPath $aside -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $aside -Force -ErrorAction SilentlyContinue
+    }
+
+    [System.IO.File]::Move($Destination, $aside)
+    try {
+        [System.IO.File]::Copy($Source, $Destination, $false)
+    } catch {
+        if (Test-Path -LiteralPath $Destination) {
+            Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
+        }
+        [System.IO.File]::Move($aside, $Destination)
+        throw
+    }
+
+    Set-ItemProperty -LiteralPath $aside -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $aside -Force -ErrorAction SilentlyContinue
 }
 
 function Copy-VerifiedAsar {
@@ -467,8 +525,11 @@ function Copy-VerifiedAsar {
     )
 
     Grant-AsarWriteAccess $Destination
-    Assert-AsarCanBeReplaced $Destination
-    [System.IO.File]::Copy($Source, $Destination, $true)
+    if ((Assert-AsarCanBeReplaced $Destination) -eq "Rename") {
+        Set-AsarByRename -Source $Source -Destination $Destination
+    } else {
+        [System.IO.File]::Copy($Source, $Destination, $true)
+    }
     $installedHash = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($installedHash -ne $ExpectedHash) { throw "The installed GPT ASAR failed SHA-256 verification." }
     return $installedHash
