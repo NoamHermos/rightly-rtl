@@ -412,6 +412,14 @@ function Grant-AsarWriteAccess {
         -Arguments @($AsarPath, "/grant", '*S-1-5-32-544:(F)', "*$userSid`:(F)") `
         -FailureMessage "Could not grant write access to the official GPT ASAR")
 
+    # An explicit deny ACE overrides the grants above during access checks, so
+    # drop any deny entries for the administrators group and the repair user on
+    # both objects. Missing entries leave icacls a no-op, hence IgnoreExitCode.
+    [void] (Invoke-NativeUtility -FilePath $icacls `
+        -Arguments @($resourcesDir, "/remove:d", '*S-1-5-32-544', "*$userSid") -IgnoreExitCode)
+    [void] (Invoke-NativeUtility -FilePath $icacls `
+        -Arguments @($AsarPath, "/remove:d", '*S-1-5-32-544', "*$userSid") -IgnoreExitCode)
+
     # WindowsApps stages app.asar with the read-only (and sometimes system)
     # attribute set. Opening a read-only file for write returns an access-denied
     # error even after ownership and ACLs are corrected, so clear the attributes
@@ -423,6 +431,22 @@ function Grant-AsarWriteAccess {
     try {
         Set-ItemProperty -LiteralPath $AsarPath -Name IsReadOnly -Value $false -ErrorAction Stop
     } catch { }
+}
+
+function Test-IsAccessDeniedException {
+    param($Exception)
+
+    # PowerShell wraps a .NET method failure in a MethodInvocationException, so
+    # the real UnauthorizedAccessException lives further down the InnerException
+    # chain. Walk the whole chain and also match the Win32 access-denied HResult
+    # (0x80070005) so the caller reliably recognises an ACL/attribute refusal.
+    $probe = $Exception
+    while ($probe) {
+        if ($probe -is [System.UnauthorizedAccessException]) { return $true }
+        if ($probe.HResult -eq -2147024891) { return $true }
+        $probe = $probe.InnerException
+    }
+    return $false
 }
 
 function Assert-AsarCanBeReplaced {
@@ -466,7 +490,7 @@ function Assert-AsarCanBeReplaced {
         # Access denied without any surviving official process is a permission
         # or read-only-attribute state, not a live lock. The caller can still
         # replace the ASAR by renaming the original aside, so stop waiting.
-        if (-not $officialBusy -and $lastException -is [System.UnauthorizedAccessException]) {
+        if (-not $officialBusy -and (Test-IsAccessDeniedException $lastException)) {
             return "Rename"
         }
         Start-Sleep -Milliseconds 350
