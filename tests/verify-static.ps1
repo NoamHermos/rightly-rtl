@@ -105,6 +105,8 @@ Assert-True ($patcher.Contains('Remove-LegacyCopiedApps')) "Legacy GPT copy clea
 Assert-True (-not $patcher.Contains('architecture = "embedded-app-copy"')) "Active GPT patcher still identifies as a copy"
 Assert-True ($patcher.Contains('Grant-AsarWriteAccess')) "GPT in-place installation is missing"
 Assert-True ($patcher.Contains('rollback backup failed SHA-256 verification')) "GPT rollback validation is missing"
+Assert-True ($patcher.Contains('return $Official.Asar')) "GPT ASAR source is detached from app.asar.unpacked"
+Assert-True (-not $patcher.Contains('return $backup')) "GPT still builds from the detached rollback backup"
 Assert-True ($asarModule.Contains('@electron/asar')) "GPT ASAR tooling is missing"
 Assert-True ($asarModule.Contains('webview\assets\app-main-*.js')) "GPT renderer discovery is missing"
 Assert-True (-not $patcher.Contains('--remote-debugging')) "Old GPT DevTools startup leaked into the patcher"

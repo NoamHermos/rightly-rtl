@@ -341,9 +341,9 @@ function Get-OriginalAsarForInstall {
             Write-Info "Restoring the verified original before refreshing the Rightly payload."
             Grant-AsarWriteAccess $Official.Asar
             Copy-Item -LiteralPath $backup -Destination $Official.Asar -Force
-            return $backup
+            return $Official.Asar
         }
-        if ($currentHash -eq [string] $state.originalHash) { return $backup }
+        if ($currentHash -eq [string] $state.originalHash) { return $Official.Asar }
         throw "The official GPT ASAR changed unexpectedly. Update or repair GPT from Microsoft Store, then run Rightly again."
     }
 
@@ -355,7 +355,7 @@ function Get-OriginalAsarForInstall {
     Copy-Item -LiteralPath $Official.Asar -Destination $Script:BackupPath -Force
     $backupHash = (Get-FileHash -LiteralPath $Script:BackupPath -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($backupHash -ne $currentHash) { throw "The GPT rollback backup failed verification after copying." }
-    return $Script:BackupPath
+    return $Official.Asar
 }
 
 function Install-PersistentCodexPatch {
@@ -402,10 +402,10 @@ function Install-PersistentCodexPatch {
         })
         Write-Ok "GPT was patched in place. Normal future launches will keep Rightly active."
     } catch {
-        if (Test-Path -LiteralPath $originalAsar) {
+        if (Test-Path -LiteralPath $Script:BackupPath) {
             try {
                 Grant-AsarWriteAccess $official.Asar
-                Copy-Item -LiteralPath $originalAsar -Destination $official.Asar -Force
+                Copy-Item -LiteralPath $Script:BackupPath -Destination $official.Asar -Force
                 Write-Warn "The original GPT ASAR was restored after the failed patch."
             } catch { }
         }
