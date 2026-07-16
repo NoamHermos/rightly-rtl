@@ -21,24 +21,44 @@ const args = parseArgs(process.argv);
 const port = Number(args.port);
 const payloadPath = args.payload;
 const logPath = args.log;
+const resultPath = args.result;
 const injectionWindowMs = Number(args["injection-window-ms"] || 20000);
 
-if (!Number.isInteger(port) || port <= 0 || !payloadPath || !logPath ||
+if (!Number.isInteger(port) || port <= 0 || !payloadPath || !logPath || !resultPath ||
     !Number.isInteger(injectionWindowMs) || injectionWindowMs < 5000) {
-    throw new Error("Usage: node gpt-rtl-cdp.js --port PORT --payload FILE --log FILE [--injection-window-ms MS]");
+    throw new Error("Usage: node gpt-rtl-cdp.js --port PORT --payload FILE --log FILE --result FILE [--injection-window-ms MS]");
 }
 
 fs.mkdirSync(path.dirname(logPath), { recursive: true });
+fs.mkdirSync(path.dirname(resultPath), { recursive: true });
 function log(message) {
     fs.appendFileSync(logPath, `${new Date().toISOString()} ${message}\n`, "utf8");
 }
 
+let resultWritten = false;
+function writeResult(status, message, details = {}) {
+    if (resultWritten) return;
+    try {
+        fs.writeFileSync(resultPath, JSON.stringify({
+            status,
+            message,
+            recordedAt: new Date().toISOString(),
+            ...details
+        }, null, 2), "utf8");
+        resultWritten = true;
+    } catch (error) {
+        log(`Could not write startup result: ${error.message}`);
+    }
+}
+
 process.on("uncaughtException", (error) => {
     log(`FATAL ${error.stack || error.message}`);
+    writeResult("failure", error.message || String(error));
     process.exitCode = 1;
 });
 process.on("unhandledRejection", (error) => {
     log(`FATAL ${error && (error.stack || error.message) || error}`);
+    writeResult("failure", error && error.message || String(error));
     process.exitCode = 1;
 });
 
@@ -206,6 +226,10 @@ async function main() {
                 connections.set(target.id, connection);
                 retryAfter.delete(target.id);
                 injectionCount++;
+                writeResult("success",
+                    "Rightly payload marker was injected and verified in GPT",
+                    { injectionCount, targetType: target.type, targetUrl: target.url || "" }
+                );
             } catch (error) {
                 lastError = error;
                 if (connection) connection.close();
@@ -226,5 +250,6 @@ async function main() {
 
 main().catch((error) => {
     log(`FATAL ${error.stack || error.message}`);
+    writeResult("failure", error.message || String(error));
     process.exit(1);
 });

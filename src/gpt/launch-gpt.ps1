@@ -12,6 +12,7 @@ $Script:PayloadPath = Join-Path $Script:Root "codex-rtl-payload.js"
 $Script:InjectorPath = Join-Path $Script:Root "gpt-rtl-cdp.js"
 $Script:LogDir = Join-Path $Script:Root "logs"
 $Script:LogPath = Join-Path $Script:LogDir "gpt-runtime.log"
+$Script:ResultPath = Join-Path $Script:LogDir "gpt-startup-result.json"
 $Script:LegacyAppDirs = @(
     (Join-Path $env:LOCALAPPDATA "Programs\Codex-RT-AI")
     (Join-Path $env:LOCALAPPDATA "Programs\Rightly-GPT-Embedded")
@@ -146,6 +147,7 @@ function Start-Injector {
         "--port", [string]$Port,
         "--payload", (Quote-NativeArgument $Script:PayloadPath),
         "--log", (Quote-NativeArgument $Script:LogPath),
+        "--result", (Quote-NativeArgument $Script:ResultPath),
         "--injection-window-ms", "20000"
     ) -join " "
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -157,6 +159,38 @@ function Start-Injector {
     $process = [System.Diagnostics.Process]::Start($startInfo)
     if (-not $process) { throw "Could not start the Rightly runtime injector." }
     return $process
+}
+
+function Wait-InjectorVerification {
+    param([System.Diagnostics.Process] $Injector)
+
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-Path -LiteralPath $Script:ResultPath) {
+            $result = $null
+            try {
+                $result = Get-Content -LiteralPath $Script:ResultPath -Raw | ConvertFrom-Json
+            } catch {
+                # The injector replaces the result atomically, but an antivirus
+                # scanner can still briefly delay access to the completed file.
+            }
+            if ($result) {
+                if ($result.status -eq "success") {
+                    Write-RightlyLog "GPT payload verification confirmed: $($result.message)"
+                    return
+                }
+                if ($result.status -eq "failure") {
+                    throw "GPT RTL injection failed: $($result.message)"
+                }
+            }
+        }
+
+        if ($Injector.HasExited -and $Injector.ExitCode -ne 0) {
+            throw "The GPT RTL injector exited with code $($Injector.ExitCode) before verification."
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    throw "GPT opened, but the Rightly payload marker was not verified within 60 seconds."
 }
 
 function Start-PackagedCodex {
@@ -190,6 +224,7 @@ public static class RightlyCodexActivation {
 try {
     New-Item -ItemType Directory -Path $Script:LogDir -Force | Out-Null
     Set-Content -LiteralPath $Script:LogPath -Value "$(Get-Date -Format o) Starting Rightly GPT runtime" -Encoding UTF8
+    Remove-Item -LiteralPath $Script:ResultPath -Force -ErrorAction SilentlyContinue
     $official = Get-OfficialCodexPackage
     Stop-LegacyCopiedCodex
     Stop-OfficialCodex $official.AppDir
@@ -199,7 +234,12 @@ try {
     $arguments = "--remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --force-ui-direction=ltr"
     $launchedProcessId = Start-PackagedCodex -AppUserModelId $official.AppUserModelId -Arguments $arguments
     Write-RightlyLog "Launched official GPT PID $launchedProcessId with loopback DevTools port $port; injector PID $($injector.Id)"
+    Wait-InjectorVerification $injector
+    Write-RightlyLog "GPT startup completed with a verified Rightly payload"
 } catch {
+    if ($injector -and -not $injector.HasExited) {
+        Stop-Process -Id $injector.Id -Force -ErrorAction SilentlyContinue
+    }
     Write-RightlyLog "FATAL $($_.Exception.Message)`r`n$($_.ScriptStackTrace)"
     Show-RightlyError $_.Exception.Message
     exit 1

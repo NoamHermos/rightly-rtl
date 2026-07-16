@@ -34,7 +34,7 @@ $ranElevatedInstaller = Invoke-RightlyElevatedInstallerIfNeeded `
 if ($ranElevatedInstaller) {
     if (-not $NoLaunch) {
         if ($Target -in @("ClaudeCode", "Both")) {
-            Invoke-RightlyOfficialLauncher -Name "Claude" -Path $claudePatcher
+            Invoke-RightlyOfficialLauncher -Name "Claude" -Path $claudePatcher -IsolateApplicationOutput
         }
         if ($Target -in @("GptWork", "Both")) {
             Invoke-RightlyOfficialLauncher -Name "GPT Work / Codex" -Path $gptPatcher
@@ -65,7 +65,7 @@ Write-Host "Use the Repair RTL desktop shortcut after restarting or updating an 
 if (-not $NoLaunch) {
     # GPT opens last because it can move the active conversation to the new window.
     if ($Target -in @("ClaudeCode", "Both")) {
-        Invoke-RightlyOfficialLauncher -Name "Claude" -Path $claudePatcher
+        Invoke-RightlyOfficialLauncher -Name "Claude" -Path $claudePatcher -IsolateApplicationOutput
     }
     if ($Target -in @("GptWork", "Both")) {
         Invoke-RightlyOfficialLauncher -Name "GPT Work / Codex" -Path $gptPatcher

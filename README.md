@@ -47,6 +47,7 @@ For a reviewable local installation, download the repository, inspect the script
 - **Repair RTL** downloads the current `main` snapshot before showing the target menu, so every successful repair uses the latest project code. An internet connection is required.
 - After an official app update, run **Repair RTL** and select only the app that was updated.
 - GPT injection is applied in memory to the official app. After fully closing GPT or restarting Windows, run **Repair RTL** and select GPT again.
+- GPT is reported as successful only after the renderer confirms the injected Rightly marker.
 - Claude is patched in place and remains corrected until an official update replaces its files. Run **Repair RTL** again after that update.
 - The local repair bundle refreshes itself during each repair. Rightly does not keep an automatic updater or repair process running in the background.
 
@@ -109,6 +110,7 @@ Choose GPT, Claude, or both. GPT removal deletes only Rightly's local runtime. C
 
 - Repair shortcut logs: `%LOCALAPPDATA%\Programs\Rightly\Repair\logs`
 - GPT injection log: `%LOCALAPPDATA%\Programs\Rightly\GPT\logs\gpt-runtime.log`
+- Claude startup stdout and stderr are kept in the repair log directory instead of appearing after the final success message.
 - If an app update changes the interface, run **Repair RTL** for that app.
 - If Claude installation fails, do not delete `.bak` files manually; use the uninstaller so the rollback engine can restore them.
 

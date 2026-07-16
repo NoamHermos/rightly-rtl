@@ -108,6 +108,8 @@ Assert-True (-not $patcher.Contains('architecture = "embedded-app-copy"')) "Acti
 Assert-True ($launcher.Contains('--remote-debugging-address=127.0.0.1')) "GPT DevTools is not loopback-only"
 Assert-True ($launcher.Contains('"--injection-window-ms", "20000"')) "GPT injector lifetime is not bounded"
 Assert-True ($injector.Contains('Runtime.evaluate')) "GPT payload injection is missing"
+Assert-True ($injector.Contains('writeResult("success"')) "GPT verification handshake is missing"
+Assert-True ($launcher.Contains('Wait-InjectorVerification')) "GPT launcher does not wait for verification"
 Assert-True (-not $injector.Contains('setInterval')) "GPT injector must not poll forever"
 
 # Renderer rules cover mixed RTL text while preserving app chrome and code.
@@ -132,6 +134,8 @@ Assert-True ($repair.Contains('& $onlineInstaller -Repo "NoamHermos/rightly" -Br
 Assert-True ($onlineInstaller.Contains('[switch] $RepairMode')) "Online installer does not accept repair mode"
 Assert-True ($onlineInstaller.Contains('$installerArguments += "-RepairMode"')) "Online installer does not forward repair mode"
 Assert-True ($repair.Contains('Start-Transcript')) "Repair failures are not logged"
+Assert-True ($repair.Contains('Show-RightlySuccess')) "Repair does not end with a clear success result"
+Assert-True ($installer.Contains('-IsolateApplicationOutput')) "Claude output can appear after the repair result"
 Assert-True ($uninstaller.Contains('Select-RightlyTarget -Operation "uninstall"')) "Unified uninstall menu is missing"
 
 # Claude stays in-place, verifies the pinned engine, and removes legacy watchers.

@@ -57,6 +57,8 @@ Assert-True ($injector.Contains('target.webSocketDebuggerUrl')) "Page-specific W
 Assert-True ($injector.Contains('Page.addScriptToEvaluateOnNewDocument')) "New renderer injection is missing"
 Assert-True ($injector.Contains('Runtime.evaluate')) "Existing renderer injection is missing"
 Assert-True ($injector.Contains('Injected and verified Rightly payload')) "Payload verification is missing"
+Assert-True ($injector.Contains('writeResult("success"')) "Injector does not publish successful marker verification"
+Assert-True ($injector.Contains('writeResult("failure"')) "Injector does not publish startup failures"
 Assert-True ($injector.Contains('Startup injection window completed')) "The injector does not disconnect after startup"
 Assert-True (-not $injector.Contains('Target.setAutoAttach')) "Broken browser-session auto-attach is still present"
 Assert-True (-not $injector.Contains('setInterval')) "The injector must not poll forever"
@@ -66,6 +68,9 @@ Assert-True ($launcher.Contains('--force-ui-direction=ltr')) "Native application
 Assert-True ($launcher.Contains('"--injection-window-ms", "20000"')) "Startup injection window is not bounded"
 Assert-True ($launcher.Contains('Stop-StaleRightlyInjectors')) "Stale injector cleanup is missing"
 Assert-True ($launcher.Contains('Stop-LegacyCopiedCodex')) "Official launcher does not close copied GPT builds"
+Assert-True ($launcher.Contains('Wait-InjectorVerification')) "GPT launcher does not wait for marker verification"
+Assert-True ($launcher.Contains('gpt-startup-result.json')) "GPT startup handshake file is missing"
+Assert-True ($patcher.Contains('RTL payload injected and verified successfully')) "GPT repair does not report verified success"
 
 Assert-True ($payload.Contains('RT-AI CODEX RTL PATCH START')) "RTL payload marker is missing"
 Assert-True ($payload.Contains('__RT_AI_CODEX_RTL_PATCH__')) "RTL payload is not idempotent"
@@ -88,6 +93,7 @@ Assert-True ($installerModule.Contains('"assets\rightly.ico"')) "Repair bundle o
 Assert-True ($installerModule.Contains('"Repair RTL.lnk"')) "The interactive repair shortcut is missing"
 Assert-True ($installerModule.Contains('-Target Prompt')) "The repair shortcut does not prompt for GPT, Claude, or both"
 Assert-True ($installerModule.Contains('$shortcut.IconLocation = "$icon,0"')) "The repair shortcut does not use the branded icon"
+Assert-True ($installer.Contains('-IsolateApplicationOutput')) "Claude application output is not isolated from the repair result"
 
 if (-not $SkipInstalledBuild) {
     $package = Get-AppxPackage -Name "OpenAI.Codex" -ErrorAction SilentlyContinue |

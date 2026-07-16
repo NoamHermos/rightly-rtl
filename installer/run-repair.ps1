@@ -25,6 +25,21 @@ function Wait-RightlyClose {
     }
 }
 
+function Show-RightlySuccess {
+    try {
+        Add-Type -AssemblyName System.Windows.Forms
+        [void][System.Windows.Forms.MessageBox]::Show(
+            "Every selected application completed successfully.`r`n`r`nWhen GPT was selected, its RTL payload marker was injected and verified before this message was shown.",
+            "Rightly repair completed",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Information
+        )
+        return $true
+    } catch {
+        return $false
+    }
+}
+
 $succeeded = $false
 try {
     Start-Transcript -LiteralPath $logPath -Force | Out-Null
@@ -59,7 +74,7 @@ if ($succeeded) {
     Write-Host "  SUCCESS" -ForegroundColor Green
     Write-Host "  Rightly RTL repair completed. You can use the app now." -ForegroundColor Green
     Write-Host "============================================================" -ForegroundColor Green
-    Wait-RightlyClose
+    if (-not (Show-RightlySuccess)) { Wait-RightlyClose }
     exit 0
 } else {
     Write-Host "============================================================" -ForegroundColor Red

@@ -122,12 +122,30 @@ function Invoke-RightlyPatcher {
 function Invoke-RightlyOfficialLauncher {
     param(
         [Parameter(Mandatory)][string] $Name,
-        [Parameter(Mandatory)][string] $Path
+        [Parameter(Mandatory)][string] $Path,
+        [switch] $IsolateApplicationOutput
     )
 
     Write-RightlyStep "Opening the official $Name application"
-    & (Get-RightlyPowerShellPath) -NoProfile -ExecutionPolicy Bypass -File $Path -Launch
-    if ($LASTEXITCODE -ne 0) { throw "$Name launcher exited with code $LASTEXITCODE." }
+    if ($IsolateApplicationOutput) {
+        $logDir = Join-Path $Script:RightlyRepairDir "logs"
+        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+        $safeName = ($Name -replace '[^A-Za-z0-9]+', '-').Trim('-').ToLowerInvariant()
+        $stdoutLog = Join-Path $logDir "$safeName-launch.stdout.log"
+        $stderrLog = Join-Path $logDir "$safeName-launch.stderr.log"
+        $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$Path`" -Launch"
+        $process = Start-Process -FilePath (Get-RightlyPowerShellPath) `
+            -ArgumentList $arguments -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
+        $process.WaitForExit()
+        if ($process.ExitCode -ne 0) {
+            throw "$Name launcher exited with code $($process.ExitCode). See $stderrLog"
+        }
+    } else {
+        & (Get-RightlyPowerShellPath) -NoProfile -ExecutionPolicy Bypass -File $Path -Launch
+        if ($LASTEXITCODE -ne 0) { throw "$Name launcher exited with code $LASTEXITCODE." }
+    }
+    Write-RightlyOk "$Name repair completed and the official app launched successfully."
 }
 
 function Copy-RightlyRepairFile {

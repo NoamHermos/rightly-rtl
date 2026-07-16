@@ -278,7 +278,12 @@ function Start-RightlyCodex {
         "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
         "-File", "`"$Script:RuntimeLauncher`""
     ) -PassThru
-    Write-Ok "Starting the official GPT app with Rightly (launcher PID $($process.Id))."
+    $process.WaitForExit()
+    if ($process.ExitCode -ne 0) {
+        $runtimeLog = Join-Path $Script:RuntimeDir "logs\gpt-runtime.log"
+        throw "GPT opened without a verified Rightly payload. See $runtimeLog"
+    }
+    Write-Ok "GPT Work / Codex RTL payload injected and verified successfully."
 }
 
 # Public actions -------------------------------------------------------------
