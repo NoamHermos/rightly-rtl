@@ -323,10 +323,56 @@ function Remove-LegacyModificationPackage {
 function Grant-AsarWriteAccess {
     param([string] $AsarPath)
     if (-not (Test-IsAdministrator)) { throw "Administrator rights are required to patch the official GPT ASAR." }
+    $resourcesDir = Split-Path -Parent $AsarPath
     & (Join-Path $env:WINDIR "System32\takeown.exe") /F $AsarPath /A | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Could not take ownership of the official GPT ASAR." }
     & (Join-Path $env:WINDIR "System32\icacls.exe") $AsarPath /grant '*S-1-5-32-544:(F)' /C | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Could not grant write access to the official GPT ASAR." }
+    & (Join-Path $env:WINDIR "System32\icacls.exe") $resourcesDir /grant '*S-1-5-32-544:(M)' /C | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not grant write access to the official GPT resources folder." }
+    try {
+        Set-ItemProperty -LiteralPath $AsarPath -Name IsReadOnly -Value $false -ErrorAction Stop
+    } catch { }
+}
+
+function Assert-AsarCanBeReplaced {
+    param([string] $AsarPath)
+
+    try {
+        $stream = [System.IO.File]::Open(
+            $AsarPath,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::ReadWrite,
+            [System.IO.FileShare]::None
+        )
+        $stream.Close()
+    } catch {
+        $processHint = ""
+        try {
+            $official = Get-OfficialCodexPackage
+            $processes = @(Get-OfficialCodexProcesses $official.AppDir)
+            if ($processes.Count -gt 0) {
+                $ids = ($processes | Select-Object -ExpandProperty ProcessId) -join ", "
+                $processHint = " Remaining GPT/Codex process ids: $ids."
+            }
+        } catch { }
+        throw "Rightly could not replace GPT's app.asar. Close every GPT Work / Codex window and any Codex task still running, then run Repair RTL again.$processHint Original error: $($_.Exception.Message)"
+    }
+}
+
+function Copy-VerifiedAsar {
+    param(
+        [Parameter(Mandatory)][string] $Source,
+        [Parameter(Mandatory)][string] $Destination,
+        [Parameter(Mandatory)][string] $ExpectedHash
+    )
+
+    Grant-AsarWriteAccess $Destination
+    Assert-AsarCanBeReplaced $Destination
+    [System.IO.File]::Copy($Source, $Destination, $true)
+    $installedHash = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($installedHash -ne $ExpectedHash) { throw "The installed GPT ASAR failed SHA-256 verification." }
+    return $installedHash
 }
 
 function Get-OriginalAsarForInstall {
@@ -339,8 +385,7 @@ function Get-OriginalAsarForInstall {
 
         if ($currentHash -eq [string] $state.patchedHash) {
             Write-Info "Restoring the verified original before refreshing the Rightly payload."
-            Grant-AsarWriteAccess $Official.Asar
-            Copy-Item -LiteralPath $backup -Destination $Official.Asar -Force
+            Copy-VerifiedAsar -Source $backup -Destination $Official.Asar -ExpectedHash ([string] $state.originalHash) | Out-Null
             return $Official.Asar
         }
         if ($currentHash -eq [string] $state.originalHash) { return $Official.Asar }
@@ -384,10 +429,7 @@ function Install-PersistentCodexPatch {
         if ($patchedHash -eq $originalHash) { throw "The patched ASAR hash did not change." }
 
         Write-Step "Installing the persistent patch into the official GPT package"
-        Grant-AsarWriteAccess $official.Asar
-        Copy-Item -LiteralPath $patchedAsar -Destination $official.Asar -Force
-        $installedHash = (Get-FileHash -LiteralPath $official.Asar -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($installedHash -ne $patchedHash) { throw "The installed GPT ASAR failed SHA-256 verification." }
+        $installedHash = Copy-VerifiedAsar -Source $patchedAsar -Destination $official.Asar -ExpectedHash $patchedHash
 
         Write-PatchState ([ordered]@{
             architecture = "official-in-place-asar"
@@ -404,8 +446,8 @@ function Install-PersistentCodexPatch {
     } catch {
         if (Test-Path -LiteralPath $Script:BackupPath) {
             try {
-                Grant-AsarWriteAccess $official.Asar
-                Copy-Item -LiteralPath $Script:BackupPath -Destination $official.Asar -Force
+                $backupHash = (Get-FileHash -LiteralPath $Script:BackupPath -Algorithm SHA256).Hash.ToLowerInvariant()
+                Copy-VerifiedAsar -Source $Script:BackupPath -Destination $official.Asar -ExpectedHash $backupHash | Out-Null
                 Write-Warn "The original GPT ASAR was restored after the failed patch."
             } catch { }
         }
@@ -430,8 +472,7 @@ function Uninstall-PersistentCodexPatch {
         $backup = Get-VerifiedRollbackBackup $state
         $currentHash = (Get-FileHash -LiteralPath $official.Asar -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($currentHash -eq [string] $state.patchedHash) {
-            Grant-AsarWriteAccess $official.Asar
-            Copy-Item -LiteralPath $backup -Destination $official.Asar -Force
+            Copy-VerifiedAsar -Source $backup -Destination $official.Asar -ExpectedHash ([string] $state.originalHash) | Out-Null
             Write-Ok "Restored the original official GPT ASAR."
         } elseif ($currentHash -ne [string] $state.originalHash) {
             throw "The GPT ASAR changed unexpectedly; the verified backup was kept at $backup"

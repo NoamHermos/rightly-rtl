@@ -104,6 +104,8 @@ Assert-True ($patcher.Contains('Remove-LegacyRuntime')) "Legacy GPT runtime clea
 Assert-True ($patcher.Contains('Remove-LegacyCopiedApps')) "Legacy GPT copy cleanup is missing"
 Assert-True (-not $patcher.Contains('architecture = "embedded-app-copy"')) "Active GPT patcher still identifies as a copy"
 Assert-True ($patcher.Contains('Grant-AsarWriteAccess')) "GPT in-place installation is missing"
+Assert-True ($patcher.Contains('Assert-AsarCanBeReplaced')) "GPT ASAR replacement preflight is missing"
+Assert-True ($patcher.Contains('Copy-VerifiedAsar')) "GPT ASAR replacement verification is missing"
 Assert-True ($patcher.Contains('rollback backup failed SHA-256 verification')) "GPT rollback validation is missing"
 Assert-True ($patcher.Contains('return $Official.Asar')) "GPT ASAR source is detached from app.asar.unpacked"
 Assert-True (-not $patcher.Contains('return $backup')) "GPT still builds from the detached rollback backup"
