@@ -24,11 +24,16 @@ $ErrorActionPreference = "Stop"
 $Script:ModuleRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Script:PayloadPath = Join-Path $Script:ModuleRoot "codex-rtl-payload.js"
 $Script:AsarModulePath = Join-Path $Script:ModuleRoot "lib\Rightly.GptAsar.ps1"
+$Script:LauncherModulePath = Join-Path $Script:ModuleRoot "lib\Rightly.GptLauncher.ps1"
+$Script:LauncherSourcePath = Join-Path $Script:ModuleRoot "Rightly.Gpt.Launcher.cs"
+$Script:LauncherIconPath = Join-Path (Split-Path -Parent (Split-Path -Parent $Script:ModuleRoot)) "assets\rightly-gpt.ico"
 $Script:StateRoot = Join-Path $env:ProgramData "Rightly\GPT"
 $Script:StatePath = Join-Path $Script:StateRoot "state.json"
 $Script:BackupPath = Join-Path $Script:StateRoot "backup\app.asar"
 $Script:RuntimeDir = Join-Path $env:LOCALAPPDATA "Programs\Rightly\GPT"
 $Script:RuntimeLauncher = Join-Path $Script:RuntimeDir "launch-gpt.ps1"
+$Script:RuntimeLauncherExe = Join-Path $Script:RuntimeDir "Rightly GPT.exe"
+$Script:RuntimeLauncherIcon = Join-Path $Script:RuntimeDir "Rightly GPT.ico"
 $Script:RuntimeState = Join-Path $Script:RuntimeDir "state.json"
 $Script:RuntimeFiles = @("codex-rtl-payload.js", "gpt-rtl-cdp.js", "launch-gpt.ps1")
 $Script:LegacyRuntimeDir = $Script:RuntimeDir
@@ -55,6 +60,10 @@ if (-not (Test-Path -LiteralPath $Script:AsarModulePath -PathType Leaf)) {
     throw "GPT ASAR helper is missing: $($Script:AsarModulePath)"
 }
 . $Script:AsarModulePath
+if (-not (Test-Path -LiteralPath $Script:LauncherModulePath -PathType Leaf)) {
+    throw "GPT launcher helper is missing: $($Script:LauncherModulePath)"
+}
+. $Script:LauncherModulePath
 
 # Console and process helpers ------------------------------------------------
 function Write-Step { param([string] $Message); Write-Host ""; Write-Host "==> $Message" -ForegroundColor Cyan }
@@ -361,6 +370,8 @@ function Remove-LegacyRuntime {
     }
     Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath("Desktop")) "Rightly GPT.lnk") `
         -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path (Join-Path ([Environment]::GetFolderPath("Programs")) "Rightly") "Rightly GPT.lnk") `
+        -Force -ErrorAction SilentlyContinue
     if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
         foreach ($name in $Script:LegacyTaskNames) {
             $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
@@ -389,24 +400,20 @@ function Copy-RightlyRuntimeFile {
 }
 
 function New-RightlyRuntimeShortcut {
-    $official = Get-OfficialCodexPackage
-    $shortcutPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "Rightly GPT.lnk"
-    $powershell = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = $powershell
-    $shortcut.WorkingDirectory = $Script:RuntimeDir
-    $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Script:RuntimeLauncher`""
-    $shortcut.IconLocation = "$($official.Exe),0"
-    $shortcut.Description = "Rightly RTL for the official GPT Work / Codex app"
-    $shortcut.Save()
-    Write-Ok "Created launch-time RTL shortcut: $shortcutPath"
+    foreach ($shortcutPath in @(New-RightlyGptShortcuts `
+        -LauncherPath $Script:RuntimeLauncherExe -WorkingDirectory $Script:RuntimeDir `
+        -IconPath $Script:RuntimeLauncherIcon)) {
+        Write-Ok "Created Rightly GPT shortcut: $shortcutPath"
+    }
 }
 
 function Deploy-RightlyRuntimeFallback {
     $official = Get-OfficialCodexPackage
     New-Item -ItemType Directory -Path $Script:RuntimeDir -Force | Out-Null
     foreach ($name in $Script:RuntimeFiles) { Copy-RightlyRuntimeFile $name }
+    Copy-Item -LiteralPath $Script:LauncherIconPath -Destination $Script:RuntimeLauncherIcon -Force
+    [void] (New-RightlyGptLauncher -SourcePath $Script:LauncherSourcePath `
+        -DestinationPath $Script:RuntimeLauncherExe -IconPath $Script:RuntimeLauncherIcon)
     [ordered]@{
         architecture = "loopback-cdp-runtime"
         officialPackageFullName = $official.PackageFullName

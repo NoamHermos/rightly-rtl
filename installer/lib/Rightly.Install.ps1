@@ -170,11 +170,14 @@ function Install-RightlyRepairBundle {
         "installer\uninstall.ps1",
         "installer\lib\Rightly.Install.ps1",
         "assets\rightly.ico",
+        "assets\rightly-gpt.ico",
         "src\gpt\patch.ps1",
         "src\gpt\codex-rtl-payload.js",
         "src\gpt\gpt-rtl-cdp.js",
         "src\gpt\launch-gpt.ps1",
+        "src\gpt\Rightly.Gpt.Launcher.cs",
         "src\gpt\lib\Rightly.GptAsar.ps1",
+        "src\gpt\lib\Rightly.GptLauncher.ps1",
         "src\claude\patch.ps1",
         "src\claude\claude-rtl-payload.js"
     )) {

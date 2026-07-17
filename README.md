@@ -1,27 +1,18 @@
 # Rightly
 
-Smart Hebrew and Arabic right-to-left support for GPT Work / Codex and Claude Desktop on Windows.
+Rightly adds intelligent Hebrew and Arabic right-to-left rendering to the official GPT Work / Codex and Claude Desktop applications on Windows.
 
-Rightly detects RTL characters anywhere in a line, aligns mixed-language content correctly, and keeps code, application controls, and English-only text left-to-right. It also handles lists, tables, the message composer, and mixed Hebrew-English task titles in the sidebar.
-
-## Features
-
-- Hebrew or Arabic anywhere in a line switches that line to RTL, even when it starts in English.
-- English-only content and application chrome remain LTR.
-- Inline code and code blocks remain LTR.
-- Bullets and numbered-list markers stay on the correct side.
-- RTL tables are centered and their cells are aligned correctly.
-- Mixed Hebrew-English sidebar titles preserve their reading order while remaining left-aligned.
-- Long conversations are processed in small idle-time batches to avoid blocking the interface.
-- No scheduled task, watcher, persistent Node process, or background repair service is installed.
+It detects RTL letters anywhere in a line, even when the line begins with an English word. Mixed-language messages, lists, tables, task titles, and interactive question panels are rendered in the correct reading direction, while code and English-only interface elements remain left-to-right.
 
 ## Requirements
 
 - Windows 10 or Windows 11.
-- The official GPT Work / Codex app and/or Claude Desktop.
-- [Node.js LTS](https://nodejs.org/) for ASAR tooling and, on protected MSIX builds, the short launch-time injector.
-- An internet connection during installation.
-- Administrator approval when requested. It is required for Claude patching and legacy-installation cleanup.
+- The official GPT Work / Codex application and/or Claude Desktop.
+- [Node.js LTS](https://nodejs.org/) for verified ASAR rebuilding and the protected-package GPT startup injector.
+- An internet connection during installation and repair.
+- Administrator approval when Windows requests it.
+
+Save active work before installing or repairing. Rightly closes only the application selected in the menu, waits for its files to be released, applies and verifies the correction, and then reopens that application.
 
 ## Installation
 
@@ -31,73 +22,118 @@ Open PowerShell and run:
 irm https://raw.githubusercontent.com/NoamHermos/rightly/main/installer/install-online.ps1 | iex
 ```
 
-Choose one target from the interactive menu:
+Choose one target:
 
 1. `GPT Work / Codex`
 2. `Claude Desktop / Code`
 3. `Both`
 
-Rightly force-closes the selected application's complete process tree before patching, waits for its files to be released, and then reopens only that application. Save any active work in the selected app first. The installer also creates one desktop shortcut named **Repair RTL**, using the Rightly icon.
+The installer downloads the current `main` revision, requests elevation when required, removes obsolete Rightly installations, and installs the selected correction. It creates a desktop shortcut named **Repair RTL** using the general Rightly icon.
 
-For a reviewable local installation, download the repository, inspect the scripts, and run `installer/install.bat` instead of executing the online command directly.
+If Windows protects GPT's Microsoft Store package from verified in-place modification, Rightly automatically installs its protected-package startup mode. In that mode it also creates **Rightly GPT** shortcuts on the desktop and in the Start menu. **Rightly GPT** uses a separate GPT-and-Rightly icon so it is visually distinct from **Repair RTL**.
 
-## Usage and updates
+### Which shortcut should be used?
 
-- The selected app opens with the RTL correction active after installation.
-- **Repair RTL** downloads the current `main` snapshot before showing the target menu, so every successful repair uses the latest project code. An internet connection is required.
-- When GPT accepts the persistent patch, it can be opened normally. When Windows keeps its MSIX files immutable, open it with the **Rightly GPT** desktop shortcut so the launch-time payload can be injected.
-- Claude remains corrected after a normal close, relaunch, or Windows restart and can be opened normally.
-- After an official app update, run **Repair RTL** and select only the app that was updated.
-- GPT is reported as successful only after either its rebuilt ASAR passes SHA-256 verification or its launch-time payload marker is verified in a live renderer.
-- Claude is patched in place and remains corrected until an official update replaces its files.
-- The local repair bundle refreshes itself during each repair. Rightly does not keep an automatic updater or repair process running in the background.
+| Shortcut | Purpose | When to use it |
+| --- | --- | --- |
+| **Rightly GPT** | Opens the official GPT application with verified RTL support when the Store package is protected | Use for normal GPT startup when this shortcut was created |
+| **Repair RTL** | Downloads the latest Rightly code and repairs GPT, Claude, or both | Use after an official application update or when the interface changes |
+
+Claude is patched directly and can be opened from its normal shortcut. GPT can also be opened normally when the installer reports that its persistent in-place patch succeeded. When **Rightly GPT** exists, use it for everyday GPT startup.
+
+## Everyday behavior
+
+The **Rightly GPT** launcher is a small, windowless executable with a branded progress window. It reports the current phase: checking the existing process, opening GPT, applying the payload, and verifying the live renderer.
+
+Its behavior depends on GPT's current state:
+
+| GPT state | Rightly action |
+| --- | --- |
+| Not running | Opens the official package with a private loopback debugging endpoint, injects the payload, and verifies its marker |
+| Open and already corrected | Verifies the live marker and focuses the existing window without restarting it |
+| Minimized to the taskbar | Restores and focuses the existing corrected window |
+| Running only in the notification area with no window | Preserves the existing process, asks the official package to create a new window, applies Rightly to the new renderer, and verifies it without changing the GPT PID |
+| Open without a verified correction | Closes that uncorrected process tree once and reopens GPT with verified Rightly support |
+| Launcher clicked twice | A Windows single-instance lock keeps the first startup active; the second click displays that GPT will open shortly and starts no additional injector |
+
+On success, the progress window confirms that Rightly is active and closes automatically. On failure, it remains open with a clear status instead of producing overlapping error dialogs.
+
+After GPT or Claude is updated, run **Repair RTL** and select only the application that was updated. The repair shortcut always downloads the latest `main` snapshot before applying a repair, so it does not keep using installer code from the original installation.
 
 ## How it works
 
+### Direction engine
+
+Rightly installs a renderer payload tailored to each application. The payload applies these rules:
+
+- A text line containing a Hebrew or Arabic letter is rendered RTL regardless of its first word.
+- A line without RTL letters remains LTR.
+- Inline code, code blocks, and technical controls remain LTR.
+- Bullets and numbered-list markers stay on the correct side.
+- Tables containing RTL text are centered within the message width, use the correct column direction, and align RTL cells correctly.
+- Mixed Hebrew-English task titles remain left-aligned in the sidebar while receiving an invisible `U+200F` mark that preserves their reading order.
+- Claude interactive question and answer panels receive the same direction rules as normal messages.
+- Long conversations are processed in small idle-time batches instead of synchronous full-page scans.
+
+DOM mutations are queued and processed incrementally. This lets Rightly handle newly streamed messages and newly opened chats without repeatedly scanning the complete conversation or blocking the interface.
+
 ### GPT Work / Codex
 
-Rightly first creates a version-specific backup of the official external `app.asar`, embeds `codex-rtl-payload.js` into the renderer entry bundles, rebuilds the ASAR, and verifies both the original and patched files with SHA-256. It retries access-denied replacement with Windows backup-mode copy and never treats the copy as successful until the installed hash matches.
+Rightly first attempts a persistent in-place ASAR patch:
 
-The persistent in-place ASAR patch modifies a file inside the Microsoft Store package. Rightly records the exact package version and never restores a backup across versions. If Windows reports success but keeps the file immutable, Rightly verifies that the original is intact and switches to a loopback-only launch-time injector. That fallback creates a **Rightly GPT** shortcut, keeps the official package untouched, verifies the payload marker in the live renderer, and disconnects its DevTools session after startup. Neither mode copies the application or installs a watcher, scheduled task, or persistent Node process.
+1. It locates the current official `OpenAI.Codex` Microsoft Store package.
+2. It force-closes only that package's process tree and waits for mapped-file handles to be released.
+3. It creates a version-specific backup of the original external `app.asar`.
+4. It embeds the Rightly payload in the relevant renderer entry bundles.
+5. It rebuilds the ASAR and verifies the original, backup, rebuilt, and installed files with SHA-256.
+6. It records the exact package identity and refuses to restore a backup across package versions.
+
+If the installed ASAR hash matches the verified patched hash, Rightly remains active when GPT is opened normally.
+
+Microsoft Store packages can reject replacement even for an administrator. If Windows keeps the ASAR immutable, Rightly verifies that the official file is still original and switches to protected-package startup mode instead of leaving a partial modification.
+
+In protected-package mode:
+
+1. `Rightly GPT.exe` starts a hidden PowerShell controller and displays a branded status window.
+2. The controller uses a random local port bound to `127.0.0.1` and activates the official package with Chromium's loopback DevTools endpoint.
+3. A short-lived Node.js injector connects only to page-specific local WebSockets.
+4. It evaluates the same Rightly renderer payload and checks `globalThis.__RT_AI_CODEX_RTL_PATCH__` inside the live renderer.
+5. Startup is reported as successful only after that marker returns `true`.
+6. The injector disconnects after its bounded startup window. No persistent Node process is left running.
+
+When GPT remains in the notification area after its last window is closed, its previous renderer may no longer exist. Rightly recognizes the existing process by its loopback address, debugging port, and launch flags. It keeps that process alive, briefly attaches an injector to the same port, activates the official package to create a window, and verifies the new renderer. This is why reopening from the tray does not require a process restart.
 
 ### Claude Desktop / Code
 
-Rightly downloads a pinned revision of [`shraga100/claude-desktop-rtl-patch`](https://github.com/shraga100/claude-desktop-rtl-patch), verifies its known SHA-256 digest, replaces its RTL payload, and applies it directly to Claude's official ASAR with backup and rollback support. Rightly does not create a copied Claude application, and it removes known legacy auto-update mechanisms.
+Rightly applies the correction to Claude's official installation rather than creating a copied application. It downloads a pinned revision of the upstream Claude patch engine, verifies its expected SHA-256 digest, replaces its direction payload with Rightly's current implementation, and then runs the verified engine with backup and rollback support.
 
-> [!WARNING]
-> The persistent GPT mode and the Claude integration modify signed application files. Claude also uses the upstream patch engine's local self-signed certificate mechanism. The protected-package GPT fallback uses a loopback DevTools endpoint during startup instead. These are unofficial modifications, may conflict with product terms or future app updates, and are used at your own risk.
+The verified engine applies it directly to Claude, and Rightly does not create a copied Claude application.
 
-### Direction rules
+The Claude integration removes known legacy automatic patchers and copied-app shortcuts. After installation, Claude can be closed, reopened, or started normally until an official update replaces the modified files.
 
-- A line containing a Hebrew or Arabic letter is rendered RTL, regardless of its first word.
-- A line without RTL letters remains LTR.
-- Inline code and code blocks remain LTR.
-- Lists place their markers on the correct side.
-- RTL tables stay within the message width and are centered in the content area.
-- Sidebar task titles remain left-aligned; titles containing Hebrew receive a hidden `U+200F` mark to preserve word order.
-- Long threads are updated in bounded idle-time batches rather than full-page synchronous scans.
+### Updates and background activity
 
-## Project structure
+No scheduled task, watcher, persistent Node process, or background repair service is installed. An official application update may replace patched files, so repair is intentionally user-triggered through **Repair RTL**.
 
-| Path | Responsibility |
-| --- | --- |
-| `installer/` | Online and local entry points, repair wrapper, and shared installation helpers |
-| `src/gpt/` | GPT ASAR patcher, protected-package runtime fallback, reusable builder, and direction payload |
-| `src/claude/` | Verified Claude patcher and direction payload |
-| `assets/` | Rightly branding used by the repair shortcut |
-| `docs/` | Third-party notices and supporting documentation |
-| `.github/` | GitHub Actions and the security policy |
-| `tests/` | Behavior, structure, and integration verification |
+The repair shortcut stores a small local repair bundle under:
 
-The payloads are standalone files applied to each renderer as one unit. GPT embeds its payload when the package is writable and injects that same file at launch when MSIX protection prevents a verified replacement. Installation code is separated by responsibility so each target can be repaired or removed independently.
+```text
+%LOCALAPPDATA%\Programs\Rightly\Repair
+```
 
-## Privacy and security
+Protected-package GPT runtime files and logs are stored under:
 
-- Rightly does not send conversation content to its own server.
-- GPT backup and installed-file hashes are recorded per Microsoft Store package version; rollback refuses mismatched files. The runtime fallback binds its DevTools endpoint to `127.0.0.1`, verifies the payload marker, and disconnects after startup.
-- The external Claude engine is pinned to an exact commit and verified with SHA-256 before execution.
-- No automatic patcher, scheduled task, watcher, or persistent Node process is installed.
-- Read the [security policy](.github/SECURITY.md) before reporting a vulnerability.
+```text
+%LOCALAPPDATA%\Programs\Rightly\GPT
+```
+
+Persistent GPT state and its version-matched rollback backup are stored under:
+
+```text
+%ProgramData%\Rightly\GPT
+```
+
+Rightly does not send conversation content to a Rightly server. The GPT loopback endpoint accepts local connections only, and the injector disconnects after verification.
 
 ## Uninstallation
 
@@ -107,29 +143,15 @@ Open PowerShell and run:
 irm https://raw.githubusercontent.com/NoamHermos/rightly/main/installer/uninstall-online.ps1 | iex
 ```
 
-Choose GPT, Claude, or both. Persistent installations restore only their verified, version-matched official backup; protected-package GPT installations remove their runtime and **Rightly GPT** shortcut. Selecting both also removes the repair bundle and repair shortcut.
+Choose GPT, Claude, or both.
 
-## Troubleshooting
+- A persistent GPT installation restores only its verified backup for the exact installed package version.
+- A protected-package GPT installation removes its launcher, icon, runtime files, and shortcuts without modifying the official package.
+- Claude is restored through its verified rollback mechanism.
+- Selecting both also removes the shared repair bundle and **Repair RTL** shortcut.
 
-- Repair shortcut logs: `%LOCALAPPDATA%\Programs\Rightly\Repair\logs`
-- Persistent GPT state and rollback backup: `%ProgramData%\Rightly\GPT`
-- Protected-package GPT runtime, state, and launch log: `%LOCALAPPDATA%\Programs\Rightly\GPT`
-- Claude startup stdout and stderr are kept in the repair log directory instead of appearing after the final success message.
-- If an app update changes the interface, run **Repair RTL** for that app.
-- If GPT was updated, Rightly detects the new Store package version and refreshes either the version-specific patch or the protected-package runtime fallback.
-- If Claude installation fails, do not delete `.bak` files manually; use the uninstaller so the rollback engine can restore them.
+## Important notice
 
-## Development
+Rightly is an independent, unofficial project and is not affiliated with OpenAI or Anthropic. The persistent GPT mode and Claude integration modify signed application files; the protected-package GPT mode uses a local DevTools endpoint during startup. These techniques may be affected by future application updates and are used at your own risk.
 
-Run the complete local verification suite from PowerShell:
-
-```powershell
-node tests/direction.test.js
-node tests/claude-direction.test.js
-./tests/verify-static.ps1
-./tests/verify-package.ps1
-./tests/verify-codex.ps1 -SkipInstalledBuild
-./tests/verify-claude.ps1 -SkipInstalledBuild
-```
-
-Rightly is an independent project and is not affiliated with OpenAI or Anthropic. Product names belong to their respective owners. The project is distributed under the [MIT License](LICENSE); third-party licenses and attribution are listed in [THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
+The project is distributed under the [MIT License](LICENSE). Third-party licenses and attribution are listed in [THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md), and security information is available in the [security policy](.github/SECURITY.md).

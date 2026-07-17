@@ -14,6 +14,8 @@ $paths = @{
     Payload = Join-Path $repoRoot "src\gpt\codex-rtl-payload.js"
     Injector = Join-Path $repoRoot "src\gpt\gpt-rtl-cdp.js"
     RuntimeLauncher = Join-Path $repoRoot "src\gpt\launch-gpt.ps1"
+    LauncherSource = Join-Path $repoRoot "src\gpt\Rightly.Gpt.Launcher.cs"
+    LauncherModule = Join-Path $repoRoot "src\gpt\lib\Rightly.GptLauncher.ps1"
     AsarModule = Join-Path $repoRoot "src\gpt\lib\Rightly.GptAsar.ps1"
     Installer = Join-Path $repoRoot "installer\install.ps1"
     InstallerModule = Join-Path $repoRoot "installer\lib\Rightly.Install.ps1"
@@ -23,7 +25,7 @@ $paths = @{
 foreach ($path in $paths.Values) {
     Assert-True (Test-Path -LiteralPath $path -PathType Leaf) "Required GPT file is missing: $path"
 }
-foreach ($path in @($paths.Patcher, $paths.RuntimeLauncher, $paths.AsarModule, $paths.Installer, $paths.InstallerModule, $paths.Repair)) {
+foreach ($path in @($paths.Patcher, $paths.RuntimeLauncher, $paths.LauncherModule, $paths.AsarModule, $paths.Installer, $paths.InstallerModule, $paths.Repair)) {
     $tokens = $null
     $errors = $null
     [void] [System.Management.Automation.Language.Parser]::ParseFile($path, [ref] $tokens, [ref] $errors)
@@ -32,9 +34,13 @@ foreach ($path in @($paths.Patcher, $paths.RuntimeLauncher, $paths.AsarModule, $
 
 $patcher = Get-Content -LiteralPath $paths.Patcher -Raw
 $payload = Get-Content -LiteralPath $paths.Payload -Raw
+$injector = Get-Content -LiteralPath $paths.Injector -Raw
+$runtimeLauncher = Get-Content -LiteralPath $paths.RuntimeLauncher -Raw
 $asarModule = Get-Content -LiteralPath $paths.AsarModule -Raw
 $installer = Get-Content -LiteralPath $paths.Installer -Raw
 $installerModule = Get-Content -LiteralPath $paths.InstallerModule -Raw
+$launcherModule = Get-Content -LiteralPath $paths.LauncherModule -Raw
+$nativeLauncher = Get-Content -LiteralPath $paths.LauncherSource -Raw
 $repair = Get-Content -LiteralPath $paths.Repair -Raw
 
 # GPT prefers a version-bound in-place patch and safely falls back at launch.
@@ -76,6 +82,28 @@ Assert-True ($patcher.Contains('architecture = "loopback-cdp-runtime"')) "Protec
 Assert-True ($patcher.Contains('Deploy-RightlyRuntimeFallback')) "Unsupported ASAR replacement does not deploy the runtime fallback"
 Assert-True ($patcher.Contains('Test-IsUnsupportedAsarReplacement')) "ASAR replacement failures are not scoped before fallback"
 Assert-True ($patcher.Contains('Windows protected this Codex package')) "Protected-package fallback is not explained"
+Assert-True ($patcher.Contains('$Script:RuntimeLauncherExe')) "Protected-package fallback has no dedicated executable"
+Assert-True ($patcher.Contains('New-RightlyGptLauncher')) "Protected-package fallback does not build its launcher executable"
+Assert-True ($patcher.Contains('New-RightlyGptShortcuts')) "Protected-package fallback does not create native-launcher shortcuts"
+Assert-True ($launcherModule.Contains('$shortcut.TargetPath = $LauncherPath')) "Rightly GPT shortcut still targets PowerShell"
+Assert-True ($launcherModule.Contains('$shortcut.IconLocation = "$IconPath,0"')) "Rightly GPT shortcut does not use its distinct icon file"
+Assert-True ($launcherModule.Contains('User Pinned\TaskBar')) "Existing Rightly GPT taskbar pins are not refreshed"
+Assert-True ($patcher.Contains('assets\rightly-gpt.ico')) "Rightly GPT launcher does not use its distinct icon"
+Assert-True ($runtimeLauncher.Contains('Test-RunningRightlyPayload')) "Rightly GPT does not verify a running app before restart"
+Assert-True ($runtimeLauncher.Contains('leaving it running')) "Rightly GPT does not preserve a verified running app"
+Assert-True ($runtimeLauncher.Contains('restarting it')) "Rightly GPT does not restart an unverified running app"
+Assert-True ($injector.Contains('verifyRunningInstance')) "Rightly GPT has no read-only marker verification mode"
+Assert-True ($nativeLauncher.Contains('MutexName')) "Rightly GPT has no single-instance startup lock"
+Assert-True ($nativeLauncher.Contains('Rightly GPT is already starting')) "Duplicate launcher clicks have no status message"
+Assert-True ($nativeLauncher.Contains('class StatusWindow')) "Rightly GPT has no startup progress window"
+Assert-True ($runtimeLauncher.Contains('Set-RightlyStatus')) "Rightly GPT does not publish GUI progress states"
+Assert-True ($runtimeLauncher.Contains('SW_RESTORE = 9')) "Rightly GPT cannot restore a minimized window"
+Assert-True ($runtimeLauncher.Contains('SetForegroundWindow')) "Rightly GPT cannot bring an existing window forward"
+Assert-True ($runtimeLauncher.Contains('Rightly is active in the background. Opening a new GPT window.')) "Rightly GPT does not explain background-window activation"
+Assert-True ($runtimeLauncher.Contains('Start-PackagedCodex -AppUserModelId $Official.AppUserModelId -Arguments ""')) "Rightly GPT does not reactivate a tray-only corrected instance"
+Assert-True ($runtimeLauncher.Contains('Test-RunningRightlyHost')) "Rightly GPT cannot recognize its tray-only host process"
+Assert-True ($runtimeLauncher.Contains('preserving the process')) "Rightly GPT can restart a valid tray-only host"
+Assert-True ($runtimeLauncher.Contains('Start-Injector $port')) "Rightly GPT cannot inject a newly opened tray window"
 
 Assert-True ($asarModule.Contains('@electron/asar')) "Electron ASAR tooling is missing"
 Assert-True ($asarModule.Contains('webview\assets\app-main-*.js')) "GPT renderer entry discovery is missing"
@@ -99,9 +127,27 @@ Assert-True ($installer.Contains('lib\Rightly.Install.ps1')) "Installer does not
 Assert-True ($installerModule.Contains('"src\gpt\lib\Rightly.GptAsar.ps1"')) "Repair bundle omits the ASAR helper"
 Assert-True (([regex]::Matches($installerModule, 'src\\gpt\\gpt-rtl-cdp\.js')).Count -eq 1) "Repair bundle must include the runtime injector once"
 Assert-True (([regex]::Matches($installerModule, 'src\\gpt\\launch-gpt\.ps1')).Count -eq 1) "Repair bundle must include the runtime launcher once"
+Assert-True (([regex]::Matches($installerModule, 'src\\gpt\\Rightly\.Gpt\.Launcher\.cs')).Count -eq 1) "Repair bundle must include the launcher source once"
+Assert-True (([regex]::Matches($installerModule, 'src\\gpt\\lib\\Rightly\.GptLauncher\.ps1')).Count -eq 1) "Repair bundle must include the launcher builder once"
 Assert-True ($installerModule.Contains('"assets\rightly.ico"')) "Repair bundle omits the Rightly icon"
+Assert-True ($installerModule.Contains('"assets\rightly-gpt.ico"')) "Repair bundle omits the Rightly GPT icon"
 Assert-True ($installerModule.Contains('"Repair RTL.lnk"')) "Interactive repair shortcut is missing"
 Assert-True ($repair.Contains('persistent ASAR patch or its protected-package launch-time payload')) "Repair success text is stale"
+
+# Compile the launcher exactly as an installation would, but never execute it.
+$launcherTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("rightly-launcher-test-" + [guid]::NewGuid().ToString("N"))
+try {
+    New-Item -ItemType Directory -Path $launcherTestRoot -Force | Out-Null
+    . $paths.LauncherModule
+    $launcherTestExe = Join-Path $launcherTestRoot "Rightly GPT.exe"
+    [void] (New-RightlyGptLauncher -SourcePath $paths.LauncherSource `
+        -DestinationPath $launcherTestExe -IconPath (Join-Path $repoRoot "assets\rightly-gpt.ico"))
+    $launcherFile = Get-Item -LiteralPath $launcherTestExe
+    Assert-True ($launcherFile.Length -gt 4096) "Compiled Rightly GPT launcher is unexpectedly small"
+    Assert-True ($launcherFile.VersionInfo.ProductName -eq "Rightly GPT") "Compiled launcher metadata is missing"
+} finally {
+    Remove-Item -LiteralPath $launcherTestRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 if (-not $SkipInstalledBuild) {
     $package = Get-AppxPackage -Name "OpenAI.Codex" -ErrorAction SilentlyContinue |
@@ -129,7 +175,7 @@ if (-not $SkipInstalledBuild) {
         $state = Get-Content -LiteralPath $runtimeStatePath -Raw | ConvertFrom-Json
         Assert-True ($state.architecture -eq "loopback-cdp-runtime") "Installed GPT fallback state describes the wrong architecture"
         Assert-True ($state.officialPackageFullName -eq $package.PackageFullName) "GPT runtime belongs to another package version"
-        foreach ($name in @("codex-rtl-payload.js", "gpt-rtl-cdp.js", "launch-gpt.ps1")) {
+        foreach ($name in @("codex-rtl-payload.js", "gpt-rtl-cdp.js", "launch-gpt.ps1", "Rightly GPT.exe", "Rightly GPT.ico")) {
             Assert-True (Test-Path -LiteralPath (Join-Path $runtimeRoot $name) -PathType Leaf) "GPT runtime file is missing: $name"
         }
         $payloadHash = (Get-FileHash -LiteralPath (Join-Path $runtimeRoot "codex-rtl-payload.js") -Algorithm SHA256).Hash.ToLowerInvariant()

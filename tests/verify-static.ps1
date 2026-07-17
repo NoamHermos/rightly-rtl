@@ -26,9 +26,15 @@ $required = @(
     "installer\lib\Rightly.Install.ps1",
     "assets\rightly-logo.png",
     "assets\rightly.ico",
+    "assets\rightly-gpt-logo.png",
+    "assets\rightly-gpt.ico",
     "src\gpt\patch.ps1",
     "src\gpt\codex-rtl-payload.js",
+    "src\gpt\gpt-rtl-cdp.js",
+    "src\gpt\launch-gpt.ps1",
+    "src\gpt\Rightly.Gpt.Launcher.cs",
     "src\gpt\lib\Rightly.GptAsar.ps1",
+    "src\gpt\lib\Rightly.GptLauncher.ps1",
     "src\claude\patch.ps1",
     "src\claude\claude-rtl-payload.js",
     "tests\verify-package.ps1"
@@ -74,7 +80,9 @@ $powerShellFiles = @(
     "installer\lib\Rightly.Install.ps1",
     "tests\verify-package.ps1",
     "src\gpt\patch.ps1",
+    "src\gpt\launch-gpt.ps1",
     "src\gpt\lib\Rightly.GptAsar.ps1",
+    "src\gpt\lib\Rightly.GptLauncher.ps1",
     "src\claude\patch.ps1"
 )
 foreach ($relative in $powerShellFiles) {
@@ -92,6 +100,7 @@ $installerModule = Read-RepoFile "installer\lib\Rightly.Install.ps1"
 $uninstaller = Read-RepoFile "installer\uninstall.ps1"
 $patcher = Read-RepoFile "src\gpt\patch.ps1"
 $asarModule = Read-RepoFile "src\gpt\lib\Rightly.GptAsar.ps1"
+$launcherModule = Read-RepoFile "src\gpt\lib\Rightly.GptLauncher.ps1"
 $payload = Read-RepoFile "src\gpt\codex-rtl-payload.js"
 $claudePatcher = Read-RepoFile "src\claude\patch.ps1"
 $repair = Read-RepoFile "installer\run-repair.ps1"
@@ -123,6 +132,38 @@ Assert-True ($patcher.Contains('architecture = "loopback-cdp-runtime"')) "Protec
 Assert-True ($patcher.Contains('Deploy-RightlyRuntimeFallback')) "Unsupported ASAR replacement does not deploy the runtime fallback"
 Assert-True (Test-Path -LiteralPath (Join-Path $repoRoot 'src\gpt\gpt-rtl-cdp.js')) "GPT runtime injector is missing"
 Assert-True (Test-Path -LiteralPath (Join-Path $repoRoot 'src\gpt\launch-gpt.ps1')) "GPT runtime launcher is missing"
+Assert-True ($patcher.Contains('$Script:RuntimeLauncherExe')) "GPT runtime has no dedicated launcher executable"
+Assert-True ($patcher.Contains('New-RightlyGptLauncher')) "GPT launcher executable is not built during fallback deployment"
+Assert-True ($patcher.Contains('New-RightlyGptShortcuts')) "GPT runtime does not create its native-launcher shortcuts"
+Assert-True ($launcherModule.Contains('$shortcut.TargetPath = $LauncherPath')) "Rightly GPT shortcut still targets PowerShell"
+Assert-True ($launcherModule.Contains('$shortcut.IconLocation = "$IconPath,0"')) "Rightly GPT shortcuts do not use the distinct icon file"
+Assert-True ($launcherModule.Contains('User Pinned\TaskBar')) "Existing Rightly GPT taskbar pins are not refreshed"
+Assert-True ($patcher.Contains('assets\rightly-gpt.ico')) "GPT launcher does not use its distinct Rightly GPT icon"
+$runtimeLauncher = Read-RepoFile "src\gpt\launch-gpt.ps1"
+$runtimeInjector = Read-RepoFile "src\gpt\gpt-rtl-cdp.js"
+$nativeLauncher = Read-RepoFile "src\gpt\Rightly.Gpt.Launcher.cs"
+Assert-True ($runtimeLauncher.Contains('Test-RunningRightlyPayload')) "GPT launcher does not verify an already-running instance"
+Assert-True ($runtimeLauncher.Contains('already open with a verified Rightly payload; leaving it running')) "Verified GPT instances are not preserved"
+Assert-True ($runtimeLauncher.Contains('open without a verified Rightly payload; restarting it')) "Uncorrected GPT instances are not restarted"
+Assert-True ($runtimeInjector.Contains('verifyRunningInstance')) "GPT injector has no read-only running-instance verifier"
+Assert-True ($runtimeInjector.Contains('hasRightlyMarker')) "GPT verifier does not inspect the renderer marker"
+Assert-True ($nativeLauncher.Contains('MutexName')) "Rightly GPT has no Windows single-instance lock"
+Assert-True ($nativeLauncher.Contains('Rightly GPT is already starting')) "A duplicate launch has no clear user message"
+Assert-True ($nativeLauncher.Contains('class StatusWindow')) "Rightly GPT has no branded startup status window"
+Assert-True ($nativeLauncher.Contains('BackgroundWorker')) "The launcher GUI can block while GPT starts"
+Assert-True ($runtimeLauncher.Contains('Set-RightlyStatus')) "The GPT runtime does not publish startup progress"
+Assert-True ($runtimeLauncher.Contains('if (-not $StatusFile) { Show-RightlyError')) "GUI launches can show duplicate error dialogs"
+Assert-True ($runtimeLauncher.Contains('SW_RESTORE = 9')) "A minimized corrected GPT window is not explicitly restored"
+Assert-True ($runtimeLauncher.Contains('SetForegroundWindow')) "An existing corrected GPT window is not brought forward"
+Assert-True ($runtimeLauncher.Contains('RightlyWindowActivation]::Restore')) "The native window-restoration helper is unused"
+Assert-True ($runtimeLauncher.Contains('Rightly is active in the background. Opening a new GPT window.')) "Background-only GPT has no window-opening status"
+Assert-True ($runtimeLauncher.Contains('Start-PackagedCodex -AppUserModelId $Official.AppUserModelId -Arguments ""')) "Background-only GPT is not reactivated through its official package identity"
+Assert-True ($runtimeLauncher.Contains('without restarting or reinjecting it')) "Background-window activation intent is undocumented in code"
+Assert-True ($runtimeLauncher.Contains('Test-RunningRightlyHost')) "Tray-only GPT cannot be identified as a Rightly-managed host"
+Assert-True ($runtimeLauncher.Contains('Test-OfficialCodexHasVisibleWindow')) "Tray-only GPT cannot be distinguished from a visible window"
+Assert-True ($runtimeLauncher.Contains('preserving the process')) "Tray-only Rightly GPT is not explicitly preserved"
+Assert-True ($runtimeLauncher.Contains('Start-Injector $port')) "A newly created background GPT window cannot receive the Rightly payload"
+Assert-True ($runtimeLauncher.Contains('original PID preserved')) "Same-process background activation is not verified in the runtime flow"
 
 # Renderer rules cover mixed RTL text while preserving app chrome and code.
 Assert-True ($payload.Contains('hasHebrew')) "Hebrew-anywhere detection is missing"
@@ -166,8 +207,12 @@ Assert-True ((Read-RepoFile "src\claude\claude-rtl-payload.js").Contains('proces
 # Brand assets are valid PNG/ICO files, not placeholders.
 $png = [System.IO.File]::ReadAllBytes((Join-Path $repoRoot "assets\rightly-logo.png"))
 $ico = [System.IO.File]::ReadAllBytes((Join-Path $repoRoot "assets\rightly.ico"))
+$gptPng = [System.IO.File]::ReadAllBytes((Join-Path $repoRoot "assets\rightly-gpt-logo.png"))
+$gptIco = [System.IO.File]::ReadAllBytes((Join-Path $repoRoot "assets\rightly-gpt.ico"))
 Assert-True ($png.Length -gt 10000 -and $png[0] -eq 0x89 -and $png[1] -eq 0x50) "Rightly PNG asset is invalid"
 Assert-True ($ico.Length -gt 10000 -and $ico[0] -eq 0 -and $ico[1] -eq 0 -and $ico[2] -eq 1) "Rightly ICO asset is invalid"
+Assert-True ($gptPng.Length -gt 10000 -and $gptPng[0] -eq 0x89 -and $gptPng[1] -eq 0x50) "Rightly GPT PNG asset is invalid"
+Assert-True ($gptIco.Length -gt 10000 -and $gptIco[0] -eq 0 -and $gptIco[1] -eq 0 -and $gptIco[2] -eq 1) "Rightly GPT ICO asset is invalid"
 
 # The standalone repository contains only the current implementation.
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $repoRoot "OLD"))) "Legacy copied-app archive must not ship in the standalone repository"
@@ -195,5 +240,7 @@ Assert-True ($readme.Contains('| --- | --- |')) "README project table is missing
 Assert-True ($LASTEXITCODE -eq 0) "GPT direction behavior tests failed"
 & node.exe (Join-Path $PSScriptRoot "claude-direction.test.js")
 Assert-True ($LASTEXITCODE -eq 0) "Claude direction behavior tests failed"
+& node.exe --check (Join-Path $repoRoot "src\gpt\gpt-rtl-cdp.js")
+Assert-True ($LASTEXITCODE -eq 0) "GPT runtime injector has JavaScript syntax errors"
 
 Write-Host "Rightly static verification passed." -ForegroundColor Green

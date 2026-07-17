@@ -23,6 +23,7 @@ const payloadPath = args.payload;
 const logPath = args.log;
 const resultPath = args.result;
 const injectionWindowMs = Number(args["injection-window-ms"] || 20000);
+const verifyOnly = args["verify-only"] === "true";
 
 if (!Number.isInteger(port) || port <= 0 || !payloadPath || !logPath || !resultPath ||
     !Number.isInteger(injectionWindowMs) || injectionWindowMs < 5000) {
@@ -62,7 +63,7 @@ process.on("unhandledRejection", (error) => {
     process.exitCode = 1;
 });
 
-const payload = fs.readFileSync(payloadPath, "utf8");
+const payload = verifyOnly ? "" : fs.readFileSync(payloadPath, "utf8");
 const versionEndpoint = `http://127.0.0.1:${port}/json/version`;
 const targetsEndpoint = `http://127.0.0.1:${port}/json/list`;
 
@@ -91,7 +92,7 @@ function getJson(url) {
 }
 
 async function waitForDebugger() {
-    const deadline = Date.now() + 45000;
+    const deadline = Date.now() + (verifyOnly ? 3000 : 45000);
     let lastError;
     while (Date.now() < deadline) {
         try {
@@ -185,9 +186,48 @@ class PageConnection {
         log(`Injected and verified Rightly payload in ${this.target.type} ${this.target.url || ""}`);
     }
 
+    async hasRightlyMarker() {
+        const verification = await this.send("Runtime.evaluate", {
+            expression: "Boolean(globalThis.__RT_AI_CODEX_RTL_PATCH__)",
+            returnByValue: true
+        });
+        return Boolean(verification.result && verification.result.value === true);
+    }
+
     close() {
         try { this.socket.close(); } catch { }
     }
+}
+
+async function verifyRunningInstance() {
+    log(`Checking the running GPT instance on 127.0.0.1:${port} for a Rightly marker`);
+    await waitForDebugger();
+    const targets = await getJson(targetsEndpoint);
+    let checkedTargets = 0;
+
+    for (const target of targets) {
+        if (!isInjectableTarget(target)) continue;
+        let connection;
+        try {
+            connection = await PageConnection.connect(target);
+            checkedTargets++;
+            if (await connection.hasRightlyMarker()) {
+                writeResult("success", "The running GPT renderer already has a verified Rightly payload", {
+                    checkedTargets,
+                    targetType: target.type,
+                    targetUrl: target.url || ""
+                });
+                log(`Verified the existing Rightly marker in ${target.type} ${target.url || ""}`);
+                return;
+            }
+        } catch (error) {
+            log(`Could not verify existing target ${target.type} ${target.url || ""}: ${error.message}`);
+        } finally {
+            if (connection) connection.close();
+        }
+    }
+
+    throw new Error(`The running GPT instance has no verified Rightly renderer marker (${checkedTargets} target(s) checked)`);
 }
 
 function isInjectableTarget(target) {
@@ -248,7 +288,7 @@ async function main() {
     await delay(50);
 }
 
-main().catch((error) => {
+(verifyOnly ? verifyRunningInstance() : main()).catch((error) => {
     log(`FATAL ${error.stack || error.message}`);
     writeResult("failure", error.message || String(error));
     process.exit(1);

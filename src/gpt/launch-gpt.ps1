@@ -4,7 +4,7 @@ debugging endpoint, then starts the lightweight Rightly runtime injector.
 #>
 
 [CmdletBinding()]
-param()
+param([string] $StatusFile)
 
 $ErrorActionPreference = "Stop"
 $Script:Root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -18,6 +18,15 @@ function Write-RightlyLog {
     param([string] $Message)
     New-Item -ItemType Directory -Path $Script:LogDir -Force | Out-Null
     Add-Content -LiteralPath $Script:LogPath -Value "$(Get-Date -Format o) $Message" -Encoding UTF8
+}
+
+function Set-RightlyStatus {
+    param([string] $Code, [string] $Message)
+    if (-not $StatusFile) { return }
+    try {
+        New-Item -ItemType Directory -Path (Split-Path -Parent $StatusFile) -Force | Out-Null
+        Set-Content -LiteralPath $StatusFile -Value @($Code, $Message) -Encoding UTF8
+    } catch { }
 }
 
 function Show-RightlyError {
@@ -54,6 +63,13 @@ function Get-OfficialCodexProcesses {
         ([System.IO.Path]::GetFullPath($_.ExecutablePath)).StartsWith(
             $prefix, [System.StringComparison]::OrdinalIgnoreCase)
     })
+}
+
+function Get-MainOfficialCodexProcess {
+    param([string] $AppDir)
+    return @(Get-OfficialCodexProcesses $AppDir | Where-Object {
+        $_.Name -ieq "ChatGPT.exe" -and $_.CommandLine -notmatch "--type="
+    } | Select-Object -First 1)
 }
 
 function Stop-OfficialCodex {
@@ -102,7 +118,11 @@ function Stop-StaleRightlyInjectors {
 }
 
 function Start-Injector {
-    param([int] $Port)
+    param(
+        [int] $Port,
+        [string] $ResultPath = $Script:ResultPath,
+        [switch] $VerifyOnly
+    )
     $node = Get-Command node.exe -ErrorAction SilentlyContinue
     if (-not $node) { throw "Node.js LTS is required to run Rightly." }
     foreach ($path in @($Script:PayloadPath, $Script:InjectorPath)) {
@@ -116,9 +136,10 @@ function Start-Injector {
         "--port", [string] $Port,
         "--payload", (Quote-NativeArgument $Script:PayloadPath),
         "--log", (Quote-NativeArgument $Script:LogPath),
-        "--result", (Quote-NativeArgument $Script:ResultPath),
-        "--injection-window-ms", "20000"
+        "--result", (Quote-NativeArgument $ResultPath),
+        "--injection-window-ms", $(if ($VerifyOnly) { "5000" } else { "20000" })
     ) -join " "
+    if ($VerifyOnly) { $arguments += " --verify-only true" }
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
     $startInfo.FileName = $node.Source
     $startInfo.Arguments = $arguments
@@ -128,6 +149,142 @@ function Start-Injector {
     $process = [System.Diagnostics.Process]::Start($startInfo)
     if (-not $process) { throw "Could not start the Rightly runtime injector." }
     return $process
+}
+
+function Get-RightlyDebugPort {
+    param($Process)
+    if (-not $Process -or -not $Process.CommandLine) { return $null }
+    if ($Process.CommandLine -match '(?:^|\s)--remote-debugging-port(?:=|\s+)(\d+)(?:\s|$)') {
+        return [int] $Matches[1]
+    }
+    return $null
+}
+
+function Test-RunningRightlyHost {
+    param($Process)
+    if (-not $Process -or -not $Process.CommandLine) { return $false }
+    return $null -ne (Get-RightlyDebugPort $Process) -and
+        $Process.CommandLine -match '(?:^|\s)--remote-debugging-address=127\.0\.0\.1(?:\s|$)' -and
+        $Process.CommandLine -match '(?:^|\s)--force-ui-direction=ltr(?:\s|$)'
+}
+
+function Test-OfficialCodexHasVisibleWindow {
+    param($MainProcess)
+    $process = Get-Process -Id $MainProcess.ProcessId -ErrorAction SilentlyContinue
+    return $null -ne $process -and $process.MainWindowHandle -ne [IntPtr]::Zero
+}
+
+function Test-RunningRightlyPayload {
+    param($MainProcess)
+
+    $port = Get-RightlyDebugPort $MainProcess
+    if (-not $port) {
+        Write-RightlyLog "Running GPT PID $($MainProcess.ProcessId) has no Rightly DevTools port"
+        return $false
+    }
+
+    $verificationResult = Join-Path $Script:LogDir ("gpt-running-result-{0}.json" -f [guid]::NewGuid().ToString("N"))
+    $verifier = $null
+    try {
+        $verifier = Start-Injector -Port $port -ResultPath $verificationResult -VerifyOnly
+        $deadline = (Get-Date).AddSeconds(8)
+        do {
+            if (Test-Path -LiteralPath $verificationResult -PathType Leaf) {
+                try {
+                    $result = Get-Content -LiteralPath $verificationResult -Raw | ConvertFrom-Json
+                    return $result.status -eq "success"
+                } catch { }
+            }
+            if ($verifier.HasExited) { break }
+            Start-Sleep -Milliseconds 150
+        } while ((Get-Date) -lt $deadline)
+        return $false
+    } finally {
+        if ($verifier -and -not $verifier.HasExited) {
+            Stop-Process -Id $verifier.Id -Force -ErrorAction SilentlyContinue
+        }
+        Remove-Item -LiteralPath $verificationResult -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Focus-OfficialCodex {
+    param($MainProcess, $Official)
+    try {
+        if (-not ("RightlyWindowActivation" -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class RightlyWindowActivation {
+    private const int SW_RESTORE = 9;
+    private delegate bool EnumWindowsProc(IntPtr window, IntPtr parameter);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindowAsync(IntPtr window, int command);
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr window);
+
+    public static bool Restore(uint processId) {
+        IntPtr match = IntPtr.Zero;
+        EnumWindows(delegate(IntPtr window, IntPtr parameter) {
+            uint owner;
+            GetWindowThreadProcessId(window, out owner);
+            if (owner == processId && IsWindowVisible(window)) {
+                match = window;
+                return false;
+            }
+            return true;
+        }, IntPtr.Zero);
+
+        if (match == IntPtr.Zero) return false;
+        ShowWindowAsync(match, SW_RESTORE);
+        SetForegroundWindow(match);
+        return true;
+    }
+}
+'@
+        }
+
+        if ([RightlyWindowActivation]::Restore([uint32] $MainProcess.ProcessId)) {
+            Write-RightlyLog "Restored and focused the existing GPT window for PID $($MainProcess.ProcessId)"
+            return
+        }
+
+        # Closing GPT's last window can leave the corrected Electron process in
+        # the notification area. Activating the official package asks that same
+        # process to create a new window without restarting or reinjecting it.
+        Set-RightlyStatus "opening" "Rightly is active in the background. Opening a new GPT window."
+        $activationProcessId = Start-PackagedCodex -AppUserModelId $Official.AppUserModelId -Arguments ""
+        Write-RightlyLog "Requested a window from the background GPT instance through package activation PID $activationProcessId"
+
+        $deadline = (Get-Date).AddSeconds(8)
+        do {
+            Start-Sleep -Milliseconds 200
+            $currentMain = @(Get-MainOfficialCodexProcess $Official.AppDir) | Select-Object -First 1
+            if ($currentMain -and [RightlyWindowActivation]::Restore([uint32] $currentMain.ProcessId)) {
+                Write-RightlyLog "Opened and focused a window from the corrected background GPT process"
+                return
+            }
+        } while ((Get-Date) -lt $deadline)
+
+        # Keep AppActivate as a final compatibility fallback when Electron
+        # creates the window under a short-lived activation process.
+        $shell = New-Object -ComObject WScript.Shell
+        if ($shell.AppActivate([int] $activationProcessId)) {
+            Write-RightlyLog "Focused the package activation process through the compatibility fallback"
+            return
+        }
+        throw "GPT is corrected and running in the background, but Windows did not open its window."
+    } catch {
+        Write-RightlyLog "Could not restore the existing GPT window: $($_.Exception.Message)"
+        throw
+    }
 }
 
 function Wait-InjectorVerification {
@@ -190,23 +347,62 @@ try {
     New-Item -ItemType Directory -Path $Script:LogDir -Force | Out-Null
     Set-Content -LiteralPath $Script:LogPath `
         -Value "$(Get-Date -Format o) Starting Rightly GPT runtime" -Encoding UTF8
+    Set-RightlyStatus "checking" "Checking whether GPT is already open with a verified Rightly correction."
     Remove-Item -LiteralPath $Script:ResultPath -Force -ErrorAction SilentlyContinue
     $official = Get-OfficialCodexPackage
+    $runningMain = @(Get-MainOfficialCodexProcess $official.AppDir) | Select-Object -First 1
+    $runningHasWindow = $runningMain -and (Test-OfficialCodexHasVisibleWindow $runningMain)
+    $runningIsRightlyHost = $runningMain -and (Test-RunningRightlyHost $runningMain)
+    $runningPayloadVerified = $runningMain -and (Test-RunningRightlyPayload $runningMain)
+
+    if ($runningPayloadVerified -and $runningHasWindow) {
+        Write-RightlyLog "GPT PID $($runningMain.ProcessId) is already open with a verified Rightly payload; leaving it running"
+        Set-RightlyStatus "ready" "GPT is already running with Rightly. Opening or restoring its window."
+        Focus-OfficialCodex -MainProcess $runningMain -Official $official
+        exit 0
+    }
+
+    if ($runningMain -and -not $runningHasWindow -and $runningIsRightlyHost) {
+        $port = Get-RightlyDebugPort $runningMain
+        Write-RightlyLog "GPT PID $($runningMain.ProcessId) is a Rightly host running without a visible window; preserving the process"
+        Set-RightlyStatus "opening" "Rightly is active in the background. Opening a new GPT window without restarting it."
+        Stop-StaleRightlyInjectors
+        $injector = Start-Injector $port
+        $activationProcessId = Start-PackagedCodex -AppUserModelId $official.AppUserModelId -Arguments ""
+        Write-RightlyLog "Requested a new window from background GPT PID $($runningMain.ProcessId); activation PID $activationProcessId; injector PID $($injector.Id)"
+        Set-RightlyStatus "injecting" "Applying Rightly to the new window and verifying its live renderer."
+        Wait-InjectorVerification $injector
+        Focus-OfficialCodex -MainProcess $runningMain -Official $official
+        Write-RightlyLog "Background GPT window opened with a verified Rightly payload; original PID preserved"
+        Set-RightlyStatus "ready" "GPT is open with a verified Rightly correction."
+        exit 0
+    }
+
+    if ($runningMain) {
+        Write-RightlyLog "GPT PID $($runningMain.ProcessId) is open without a verified Rightly payload; restarting it"
+        Set-RightlyStatus "restarting" "GPT is open without a verified correction, so Rightly will restart it once."
+    } else {
+        Set-RightlyStatus "preparing" "Preparing a local, verified Rightly startup."
+    }
     Stop-OfficialCodex $official.AppDir
     Stop-StaleRightlyInjectors
+    Set-RightlyStatus "opening" "Opening the official GPT application with a private loopback debugging endpoint."
     $port = Get-FreeLoopbackPort
     $injector = Start-Injector $port
     $arguments = "--remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --force-ui-direction=ltr"
     $launchedProcessId = Start-PackagedCodex `
         -AppUserModelId $official.AppUserModelId -Arguments $arguments
     Write-RightlyLog "Launched official GPT PID $launchedProcessId with loopback DevTools port $port; injector PID $($injector.Id)"
+    Set-RightlyStatus "injecting" "Applying the RTL payload and verifying it inside the live GPT renderer."
     Wait-InjectorVerification $injector
     Write-RightlyLog "GPT startup completed with a verified Rightly payload"
+    Set-RightlyStatus "ready" "GPT is open with a verified Rightly correction."
 } catch {
     if ($injector -and -not $injector.HasExited) {
         Stop-Process -Id $injector.Id -Force -ErrorAction SilentlyContinue
     }
     Write-RightlyLog "FATAL $($_.Exception.Message)`r`n$($_.ScriptStackTrace)"
-    Show-RightlyError $_.Exception.Message
+    Set-RightlyStatus "failed" $_.Exception.Message
+    if (-not $StatusFile) { Show-RightlyError $_.Exception.Message }
     exit 1
 }
